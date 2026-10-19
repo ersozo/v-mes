@@ -30,6 +30,7 @@ services:
       MSSQL_APP_USER: ${MSSQL_APP_USER:-mes_app}
       MSSQL_APP_PASSWORD: ${MSSQL_APP_PASSWORD:?MSSQL_APP_PASSWORD gerekli}
       DB_SEED: ${DB_SEED:-0}
+      DB_RESET: ${DB_RESET:-0}
     volumes:
       - ./db:/db:ro
     depends_on:
@@ -119,6 +120,35 @@ services:
       timeout: 5s
       retries: 5
       start_period: 20s
+    restart: unless-stopped
+
+  api:
+    build: ./apps/api
+    environment:
+      MSSQL_HOST: mssql
+      MSSQL_DB: ${MSSQL_DB:-MES_DB}
+      MSSQL_APP_USER: ${MSSQL_APP_USER:-mes_app}
+      MSSQL_APP_PASSWORD: ${MSSQL_APP_PASSWORD}
+      JWT_SECRET: ${JWT_SECRET:?JWT_SECRET gerekli}
+      COOKIE_SECURE: ${COOKIE_SECURE:-false}
+      CORS_ORIGIN: ${CORS_ORIGIN:-}
+      ADMIN_USERNAME: ${ADMIN_USERNAME:-}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-}
+      NODERED_URL: http://nodered:1880
+      NODERED_ADMIN_USER: ${NODERED_ADMIN_USER:-admin}
+      NODERED_ADMIN_PASSWORD: ${NODERED_ADMIN_PASSWORD}
+      EDGE_ID: ${EDGE_ID:-edge-01}
+    ports:
+      - "${API_PORT:-8000}:8000"
+    depends_on:
+      mssql:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=4).status == 200 else 1)"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
     restart: unless-stopped
 
   # Geliştirme: S7-1200/1500 simülatörü (makine başına ayrı S7 portu) + kontrol API'si

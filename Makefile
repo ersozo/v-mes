@@ -2,10 +2,11 @@
 NODE_RUN = docker run --rm -v "$(CURDIR)":/w -v vmes2-pnpm-store:/pnpm-store -w /w -e CI=true node:24-alpine \
 	sh -c 'corepack enable >/dev/null 2>&1 && pnpm config set store-dir /pnpm-store >/dev/null && $(1)'
 
-PY_TEST = docker run --rm -v "$(CURDIR)/apps/$(1)":/src:ro python:3.12-slim \
+PY_TEST = docker run --rm -v "$(CURDIR)/apps/$(1)":/src:ro -v "$(CURDIR)/packages/contracts/test-vectors":/vectors:ro \
+	-e PLC_VECTORS=/vectors/plc.json python:3.12-slim \
 	sh -c 'cp -r /src /tmp/app && cd /tmp/app && pip install -q --root-user-action=ignore . pytest >/dev/null && python -m pytest -q'
 
-.PHONY: up down logs migrate seed install test test-ts test-py build ps flows-preview flows-deploy smoke
+.PHONY: up down logs migrate seed install test test-ts test-py test-api-int build ps flows-preview flows-deploy smoke
 
 up:            ## Tüm servisleri başlat ve migration'ları uygula
 	docker compose up -d --build mssql emqx nodered
@@ -38,6 +39,13 @@ test-ts:
 test-py:
 	$(call PY_TEST,simulator)
 	$(call PY_TEST,api)
+
+test-api-int:  ## API entegrasyon testleri (MES_TEST veritabanını sıfırlar, geliştirme verisine dokunmaz)
+	DB_RESET=1 DB_SEED=1 MSSQL_DB=MES_TEST docker compose run --rm --build db-migrate
+	docker compose build api
+	docker compose run --rm --no-deps --user root -e MSSQL_DB=MES_TEST -e INTEGRATION=1 -e ADMIN_USERNAME=admin \
+		-e ADMIN_PASSWORD=AdminPass123 -v "$(CURDIR)/apps/api/tests":/app/tests:ro --entrypoint sh api \
+		-c 'pip install -q --root-user-action=ignore pytest >/dev/null && cd /app && python -m pytest -q -p no:cacheprovider tests/integration'
 
 flows-preview: ## Node-RED akış farkını göster
 	docker compose --profile tools run --rm --build flow-cli preview

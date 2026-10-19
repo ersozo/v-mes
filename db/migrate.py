@@ -63,6 +63,15 @@ def ensure_database(db_name: str) -> None:
     conn = connect("master")
     conn.autocommit(True)
     with conn.cursor() as cur:
+        if os.environ.get("DB_RESET") == "1":
+            # Güvenlik: yalnızca test veritabanları sıfırlanabilir.
+            if not db_name.upper().endswith("_TEST"):
+                sys.exit(f"[migrate] DB_RESET yalnızca adı _TEST ile biten veritabanlarında kullanılabilir ({db_name})")
+            cur.execute("SELECT DB_ID(%s)", (db_name,))
+            if cur.fetchone()[0] is not None:
+                print(f"[migrate] test veritabanı sıfırlanıyor: {db_name}")
+                cur.execute(f"ALTER DATABASE [{db_name}] SET SINGLE_USER WITH ROLLBACK IMMEDIATE")
+                cur.execute(f"DROP DATABASE [{db_name}]")
         cur.execute("SELECT DB_ID(%s)", (db_name,))
         if cur.fetchone()[0] is None:
             print(f"[migrate] veritabanı oluşturuluyor: {db_name}")

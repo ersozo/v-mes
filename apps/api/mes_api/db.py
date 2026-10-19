@@ -1,9 +1,10 @@
-"""MSSQL bağlantısı (pymssql senkron çalışır; FastAPI'de düz `def` endpoint'lerden kullanılmalı)."""
+"""MSSQL erişimi (pymssql senkron çalışır; FastAPI'de DB kullanan endpoint'ler düz `def` olmalıdır)."""
 
 from __future__ import annotations
 
 from collections.abc import Iterator
 from contextlib import contextmanager
+from typing import Any
 
 import pymssql
 
@@ -21,3 +22,22 @@ def connect(settings: DbSettings | None = None) -> Iterator[pymssql.Connection]:
         yield conn
     finally:
         conn.close()
+
+
+def fetch_all(conn: pymssql.Connection, sql: str, params: tuple | dict | None = None) -> list[dict[str, Any]]:
+    with conn.cursor(as_dict=True) as cur:
+        cur.execute(sql, params)
+        return list(cur.fetchall())
+
+
+def fetch_one(conn: pymssql.Connection, sql: str, params: tuple | dict | None = None) -> dict[str, Any] | None:
+    with conn.cursor(as_dict=True) as cur:
+        cur.execute(sql, params)
+        return cur.fetchone()
+
+
+def execute(conn: pymssql.Connection, sql: str, params: tuple | dict | None = None) -> int:
+    """Etkilenen satır sayısını döner."""
+    with conn.cursor() as cur:
+        cur.execute(sql, params)
+        return cur.rowcount

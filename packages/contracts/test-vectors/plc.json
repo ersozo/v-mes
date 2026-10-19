@@ -1,0 +1,52 @@
+{
+  "_comment": "TS (packages/contracts) ve Python (apps/api) doğrulayıcılarının ortak test vektörleri. İki taraf da bu dosyaya karşı test edilir.",
+  "addresses": {
+    "valid": [
+      ["DB1,DINT0", { "db": 1, "type": "DINT", "offset": 0 }, "DB1,DINT0"],
+      ["db1,di4", { "db": 1, "type": "DINT", "offset": 4 }, "DB1,DINT4"],
+      ["DB10,X8.3", { "db": 10, "type": "X", "offset": 8, "bit": 3 }, "DB10,X8.3"],
+      ["DB1,R12", { "db": 1, "type": "REAL", "offset": 12 }, "DB1,REAL12"],
+      ["DB2,W10", { "db": 2, "type": "WORD", "offset": 10 }, "DB2,WORD10"],
+      [" DB1,BYTE7 ", { "db": 1, "type": "BYTE", "offset": 7 }, "DB1,BYTE7"],
+      ["DB65535,DW65535", { "db": 65535, "type": "DWORD", "offset": 65535 }, "DB65535,DWORD65535"],
+      ["DB3,I2", { "db": 3, "type": "INT", "offset": 2 }, "DB3,INT2"]
+    ],
+    "invalid": ["DB0,INT0", "DB1,X8", "DB1,X8.8", "DB1,INT2.1", "DB1,STRING0", "M10.0", "DB1;INT0", "DB1,LREAL0", "", "DB65536,INT0", "DB1,INT65536", "DB1,CHAR0"]
+  },
+  "tags": {
+    "valid": [
+      { "name": "total_count", "address": "DB1,DINT0", "role": "total_count" },
+      { "name": "total_count", "address": "DB1,WORD0", "role": "total_count", "unit": "pcs" },
+      { "name": "running", "address": "DB1,X8.0", "role": "running" },
+      { "name": "state_code", "address": "DB1,INT10", "role": "state_code" },
+      { "name": "temp", "address": "DB1,REAL8", "role": "process", "unit": "°C" }
+    ],
+    "invalid": [
+      { "name": "total_count", "address": "DB1,INT0", "role": "total_count" },
+      { "name": "running", "address": "DB1,REAL8", "role": "running" },
+      { "name": "Total", "address": "DB1,DINT0", "role": "total_count" },
+      { "name": "1abc", "address": "DB1,DINT0", "role": "process" },
+      { "name": "x", "address": "DB1,DINT0", "role": "unknown" },
+      { "name": "x", "address": "DB1,REAL0", "role": "process", "unit": "çok-uzun-bir-birim-adi" }
+    ]
+  },
+  "tagLists": {
+    "valid": [
+      [
+        { "name": "a", "address": "DB1,REAL0", "role": "process" },
+        { "name": "b", "address": "DB1,REAL4", "role": "process" }
+      ]
+    ],
+    "invalid": [
+      [],
+      [
+        { "name": "a", "address": "DB1,DINT0", "role": "total_count" },
+        { "name": "a", "address": "DB1,REAL4", "role": "process" }
+      ],
+      [
+        { "name": "a", "address": "DB1,DINT0", "role": "total_count" },
+        { "name": "b", "address": "DB1,DINT4", "role": "total_count" }
+      ]
+    ]
+  }
+}

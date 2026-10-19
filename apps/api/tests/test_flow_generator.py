@@ -102,3 +102,16 @@ def test_merge_keeps_user_flows_and_diff_detects_changes():
     redeployed = merge_into_existing(as_returned, v2)
     assert not any(n.get("z") == line_tab_id(2) or n["id"] == line_tab_id(2) for n in redeployed)
     assert user_tab in redeployed
+
+
+def test_unchanged_tabs_reuse_existing_nodes_without_credentials():
+    v1 = build_managed_flows([line(1, machine("cnc-01")), line(2, machine("pres-01"))], "edge-01")
+    as_returned = [{k: v for k, v in n.items() if k != "credentials"} for n in v1]
+    v2 = build_managed_flows([line(1, machine("cnc-01", poll_ms=250)), line(2, machine("pres-01"))], "edge-01")
+    merged = merge_into_existing(as_returned, v2)
+    brokers = {n["z"]: n for n in merged if n["type"] == "mqtt-broker"}
+    # Değişen hat yeni düğümlerle (credentials dahil), değişmeyenler mevcut hâliyle gider
+    assert "credentials" in brokers[line_tab_id(1)]
+    assert "credentials" not in brokers[line_tab_id(2)]
+    assert "credentials" not in brokers[edge_tab_id("edge-01")]
+    assert len(merged) == len(v2)

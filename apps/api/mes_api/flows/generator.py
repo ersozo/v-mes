@@ -334,9 +334,20 @@ def build_managed_flows(lines: list[LineSpec], edge_id: str) -> list[dict]:
     return nodes
 
 
+def _tab_of(node: dict) -> str:
+    return node["id"] if node.get("type") == "tab" else node.get("z", "")
+
+
 def merge_into_existing(existing: list[dict], managed: list[dict]) -> list[dict]:
-    """Mevcut akıştan yönetilen öğeleri çıkarıp yenilerini ekler; kullanıcının sekmelerine dokunmaz."""
-    return [n for n in existing if not is_managed(n)] + managed
+    """Mevcut akıştan yönetilen öğeleri çıkarıp yenilerini ekler; kullanıcının sekmelerine dokunmaz.
+
+    İçeriği değişmeyen yönetilen sekmeler için Node-RED'in mevcut düğümleri aynen geri gönderilir.
+    Yeni düğümler credentials içerdiğinden, aynı değerlerle bile gönderilse Node-RED onları
+    "değişmiş" sayar ve o sekmenin MQTT bağlantısını yeniden kurar.
+    """
+    unchanged = set(diff_managed(existing, managed).unchanged_tabs)
+    kept = [n for n in existing if not is_managed(n) or _tab_of(n) in unchanged]
+    return kept + [n for n in managed if _tab_of(n) not in unchanged]
 
 
 @dataclass(frozen=True)
@@ -370,8 +381,7 @@ def diff_managed(existing: list[dict], managed: list[dict]) -> FlowDiff:
         for n in nodes:
             if not is_managed(n):
                 continue
-            tab = n["id"] if n.get("type") == "tab" else n.get("z", "")
-            tabs.setdefault(tab, []).append(_normalize_for_compare(n))
+            tabs.setdefault(_tab_of(n), []).append(_normalize_for_compare(n))
         return {t: sorted(ns, key=lambda n: n["id"]) for t, ns in tabs.items()}
 
     old, new = by_tab(existing), by_tab(managed)

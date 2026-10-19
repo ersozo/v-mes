@@ -4,9 +4,13 @@ version = "0.1.0"
 description = "MES analitik ve konfigürasyon API'si"
 requires-python = ">=3.12"
 dependencies = [
+    "fastapi==0.143.0",
+    "uvicorn[standard]==0.54.0",
     "pymssql==2.4.4",
-    "httpx>=0.28",
-    "pydantic>=2.9",
+    "httpx==0.28.1",
+    "pydantic==2.14.1",
+    "argon2-cffi==25.1.0",
+    "PyJWT==2.15.1",
 ]
 
 [dependency-groups]

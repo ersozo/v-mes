@@ -184,7 +184,8 @@ Tag değerleri sayı veya boolean'dır (boolean → 0/1 olarak saklanır). Sözl
 
 ### 7.1. İş Akışı
 1. **Kayıt/Güncelleme:** Web arayüzü (Zero-Code PLC konfigüratörü) veya REST API ile makine, bağlantı ve tag bilgileri girilir. API adres sözdizimini ve zorunlu rolleri doğrular.
-2. **Bağlantı testi (opsiyonel):** `POST /api/machines/{id}/plc/test` — API, Node-RED üzerinden tek seferlik okuma yaptırır ve sonucu döner.
+2. **Doğrulama:** `POST /api/machines/{id}/plc/validate` kaydetmeden doğrular (adres sözdizimi, rol-tip uyumu, zorunlu roller, çakışan adres uyarıları); konfigüratördeki anlık geri bildirim içindir. Adresler kanonik biçimde saklanır (`db1,di4` → `DB1,DINT4`).
+   - **Bağlantı testi** (`POST /api/machines/{id}/plc/test`, Node-RED üzerinden tek seferlik okuma) fiziksel test PLC'si hazır olduğunda, son aşamada eklenecektir.
 3. **Akış üretimi:** Aktif makineler taranır, her **hat (line)** için ayrı bir Node-RED sekmesi (flow tab) üretilir. Sekme ID'leri deterministiktir (`mes-line-{line_id}`), böylece yeniden üretimde aynı sekme güncellenir.
    - Makine başına: `s7 endpoint` (config), `s7 in` (tüm değişkenler, `poll_ms`), normalizasyon `function` (payload sözleşmesini üretir), `mqtt out`.
    - Makine başına durum izleme: `s7 in` düğümünün durum değişiklikleri (`status` düğümü) ve ilk başarılı okuma, `status` topic'ine retained olarak yayınlanır. (S7 düğümünün ilk durum olayı akış başlarken kaçabildiği için normalize fonksiyonu da ilk okumada `online: true` yayınlar.)
@@ -196,6 +197,7 @@ Tag değerleri sayı veya boolean'dır (boolean → 0/1 olarak saklanır). Sözl
    - Sonuç **`POST /flows`** ile `Node-RED-Deployment-Type: flows` başlığı ve okunan `rev` ile gönderilir. Node-RED yalnızca içeriği değişen sekmeleri yeniden başlatır; diğer hatların PLC bağlantıları kopmaz. Arada başkası deploy ettiyse `409` döner ve işlem tekrarlanır.
    - (`POST /flow` kullanılmaz: Node-RED verilen sekme ID'sini yok sayıp yeni ID üretir; deterministik ID'ler bozulur.)
    - Değişiklik yoksa deploy atlanır. Artık aktif olmayan hatların sekmeleri aynı işlemde kaldırılır.
+   - İçeriği değişmeyen sekmeler için Node-RED'in mevcut düğümleri aynen geri gönderilir. Yeni üretilen düğümler credentials içerdiği için Node-RED onları (aynı değerle bile) değişmiş sayar ve o sekmenin MQTT bağlantısını yeniden kurar; bu yöntemle yalnızca gerçekten değişen hat etkilenir.
    - Kalıcılık Node-RED'in kendi `flows.json` dosyası üzerinden sağlanır; ayrıca dosyaya yazılmaz.
    - Her deploy `flow_deployments` tablosuna (kim, ne zaman, özet, sonuç) kaydedilir.
 
@@ -222,7 +224,12 @@ Tag değerleri sayı veya boolean'dır (boolean → 0/1 olarak saklanır). Sözl
 | İş emri başlat/bitir, duruş nedeni ata, hurda gir | ✓ | ✓ | ✓ | |
 | Canlı izleme ve raporlar | ✓ | ✓ | ✓ | ✓ |
 
-- JWT: kısa ömürlü access token (15 dk) + refresh token (httpOnly cookie). Şifreler argon2id ile saklanır.
+- JWT: kısa ömürlü access token (15 dk, HS256; claim'ler `sub`, `name`, `role`, `type: "access"`) + refresh token (httpOnly, `SameSite=Strict`, `path=/api/auth` çerezi; veritabanında yalnızca SHA-256 hash'i saklanır).
+  - Refresh token her kullanımda yenilenir (rotasyon). Kullanılmış bir token tekrar gelirse çalınmış sayılır ve kullanıcının tüm oturumları kapatılır.
+  - Rol değişikliği, şifre değişikliği ve pasifleştirme mevcut oturumları kapatır. Sistemde en az bir aktif admin kalması zorunludur.
+  - Kullanıcı adı başına kaba kuvvet koruması: 5 hatalı denemeden sonra 60 sn kilit. Şifre politikası: en az 10 karakter, büyük/küçük harf ve rakam.
+  - Sistemde hiç kullanıcı yoksa API ilk açılışta `ADMIN_USERNAME` / `ADMIN_PASSWORD` ile admin hesabı oluşturur.
+- Şifreler argon2id ile saklanır.
 - Gizli bilgiler yalnızca `.env` / Docker secrets içinde tutulur, repoya girmez.
 
 ---
@@ -255,7 +262,10 @@ OEE               = A × P × Q
 ```
 POST   /api/auth/login | /api/auth/refresh | /api/auth/logout
 CRUD   /api/areas, /api/lines, /api/machines, /api/products, /api/shifts, /api/downtime-reasons, /api/users
-GET/PUT /api/machines/{id}/plc          POST /api/machines/{id}/plc/test
+GET    /api/hierarchy                   (alan → hat → makine ağacı)
+PUT    /api/products/{id}/rates         GET/PATCH /api/settings
+GET    /api/auth/me                     /api/docs (OpenAPI)
+GET/PUT /api/machines/{id}/plc          POST /api/machines/{id}/plc/validate   (POST .../plc/test → aşama 7)
 GET    /api/flows/preview               POST /api/flows/deploy        GET /api/flows/deployments
 CRUD   /api/production-orders           POST /api/production-orders/{id}/start|pause|complete
 GET    /api/downtimes?machine_id&from&to&unassigned
@@ -350,7 +360,8 @@ Hedef: **etkileyici ama sade.** Her grafik tek bir soruyu net cevaplar; süs yer
 |---|---|---|
 | 1 | Temel altyapı | Monorepo, docker-compose, DB migration'ları, `contracts` paketi |
 | 2 | Veri hattı | Simülatör → Node-RED → EMQX → ingestion → MSSQL; sayaç farkları, durum makinesi, Socket.io |
-| 3 | Konfigürasyon | FastAPI auth + CRUD, akış üretici, önizleme, sekme bazlı deploy; test PLC ile doğrulama |
+| 3 | Konfigürasyon | FastAPI auth + roller, ana veri CRUD, PLC doğrulama, akış önizleme/deploy uç noktaları |
 | 4 | OEE motoru | Vardiya, ürün, iş emri, duruş, hurda; OEE ve rapor endpoint'leri + birim testleri |
 | 5 | Ön yüz | Canlı panel, makine detayı, operatör ekranı, konfigüratör, raporlar |
-| 6 | Sağlamlaştırma | TLS/ACL, retention/partition job'ları, uçtan uca testler, dokümantasyon |
+| 6 | Sağlamlaştırma | TLS, retention/partition job'ları, uçtan uca testler, dokümantasyon |
+| 7 | Saha doğrulaması | Fiziksel S7-1200/1500 test PLC'si ile bağlantı, PLC bağlantı testi uç noktası, gerçek adreslerle akış doğrulaması |
