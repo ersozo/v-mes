@@ -77,12 +77,73 @@ services:
       MQTT_PASSWORD: ${MQTT_NODERED_PASSWORD}
     ports:
       - "${NODERED_PORT:-1880}:1880"
+    # İmajın kendi healthcheck'i /data/settings.js bekler; ayarlar başka yolda olduğu için basit HTTP kontrolü
+    healthcheck:
+      test: ["CMD", "node", "-e", "require('http').get('http://127.0.0.1:1880/', r => process.exit(r.statusCode < 500 ? 0 : 1)).on('error', () => process.exit(1))"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
     volumes:
       - nodered-data:/data
     depends_on:
       emqx:
         condition: service_healthy
     restart: unless-stopped
+
+  ingestion:
+    build:
+      context: .
+      dockerfile: apps/ingestion/Dockerfile
+    environment:
+      MQTT_URL: mqtt://emqx:1883
+      MQTT_USER: ${MQTT_INGESTION_USER:-ingestion}
+      MQTT_PASSWORD: ${MQTT_INGESTION_PASSWORD}
+      MSSQL_HOST: mssql
+      MSSQL_DB: ${MSSQL_DB:-MES_DB}
+      MSSQL_APP_USER: ${MSSQL_APP_USER:-mes_app}
+      MSSQL_APP_PASSWORD: ${MSSQL_APP_PASSWORD}
+      JWT_SECRET: ${JWT_SECRET:?JWT_SECRET gerekli}
+      CORS_ORIGIN: ${CORS_ORIGIN:-*}
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+    ports:
+      - "${INGESTION_PORT:-3001}:3001"
+    depends_on:
+      mssql:
+        condition: service_healthy
+      emqx:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:3001/health >/dev/null || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+    restart: unless-stopped
+
+  # Geliştirme: S7-1200/1500 simülatörü (makine başına ayrı S7 portu) + kontrol API'si
+  simulator:
+    build: ./apps/simulator
+    profiles: ["dev"]
+    ports:
+      - "${SIMULATOR_CONTROL_PORT:-8090}:8090"
+    restart: unless-stopped
+
+  # Akış üretici CLI (3. aşamada API servisine taşınacak):
+  #   docker compose run --rm flow-cli preview | deploy | dump
+  flow-cli:
+    build: ./apps/api
+    profiles: ["tools"]
+    entrypoint: ["python", "-I", "-m", "mes_api.flows.cli"]
+    environment:
+      MSSQL_HOST: mssql
+      MSSQL_DB: ${MSSQL_DB:-MES_DB}
+      MSSQL_APP_USER: ${MSSQL_APP_USER:-mes_app}
+      MSSQL_APP_PASSWORD: ${MSSQL_APP_PASSWORD}
+      NODERED_URL: http://nodered:1880
+      NODERED_ADMIN_USER: ${NODERED_ADMIN_USER:-admin}
+      NODERED_ADMIN_PASSWORD: ${NODERED_ADMIN_PASSWORD}
+      EDGE_ID: ${EDGE_ID:-edge-01}
 
 volumes:
   mssql-data:

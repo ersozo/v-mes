@@ -31,7 +31,7 @@ Uçtan uca bir Endüstriyel IoT veri toplama, canlı izleme ve OEE raporlama sis
 | İdeal çevrim süresi | **Ürün × makine** eşleşmesinden; aktif iş emrinin ürününe göre uygulanır. |
 | Yetkilendirme | JWT + roller: `admin`, `engineer`, `operator`, `viewer`. |
 | Duruş & iş emri | Duruşlar otomatik açılır; operatör ekranından neden atanır. İş emirleri web arayüzünden yönetilir. |
-| Test ortamı | Simülatör (gerçek S7 protokolü konuşan snap7 sunucusu) + fiziksel test PLC'si. |
+| Test ortamı | Simülatör (gerçek S7 protokolü konuşan python-snap7 sunucusu) + fiziksel test PLC'si (S7-1200/1500). |
 
 ### 1.2. Kapsam dışı (v1)
 Modbus/OPC UA, SSO/LDAP, çoklu fabrika (multi-tenant), ERP entegrasyonu, bakım (CMMS) modülü.
@@ -49,7 +49,7 @@ Modbus/OPC UA, SSO/LDAP, çoklu fabrika (multi-tenant), ERP entegrasyonu, bakım
 | Veritabanı | MS SQL Server 2022, veritabanı: `MES_DB` |
 | Analitik API | Python 3.12, FastAPI, Pydantic v2, `pymssql`, `argon2-cffi`, `PyJWT` |
 | Ön yüz | React + Vite + TypeScript, TailwindCSS, Recharts, Socket.io-client, Lucide-React, TanStack Query |
-| Simülatör | Node.js / TypeScript, S7 sunucusu (snap7 tabanlı) |
+| Simülatör | Python 3.12, `python-snap7` 3.x S7 sunucusu (saf Python; native derleme gerektirmez) |
 | Paket yönetimi | `pnpm` workspaces (TS projeleri), `uv` (Python) |
 
 **Not (pymssql):** Sürücü senkron çalışır. FastAPI'de DB erişen endpoint'ler `async def` değil düz `def` olarak yazılır (FastAPI bunları threadpool'da çalıştırır) veya `run_in_threadpool` kullanılır.
@@ -170,12 +170,13 @@ Tag değerleri sayı veya boolean'dır (boolean → 0/1 olarak saklanır). Sözl
    - Farklar dakikalık kovalara toplanıp `counter_deltas_1m` tablosuna upsert edilir.
    - Böylece raporlarda `SUM(ham sayaç)` veya `max − min` hiçbir zaman kullanılmaz; sıfırlanmalar ve pencere sınırları doğru ele alınır.
 4. **Durum makinesi:** Makine bazında `running` / `stopped` / `offline` hesaplanır.
-   - `state_source = 'tag'`: `running` (veya `state_code`) tag değeri.
+   - `state_source = 'tag'`: `running` tag'i (0 dışı = çalışıyor). Yoksa `state_code` (yalnızca `1` = çalışıyor; `0` beklemede, diğer kodlar arıza/duruş nedeni). İkisi birden varsa `running` önceliklidir.
    - `state_source = 'counter'`: `total_count` son `counter_idle_seconds` saniyedir artmadıysa `stopped`.
    - `offline`: `status.online = false` veya `3 × poll_ms` (min. 30 sn) boyunca telemetri gelmemesi.
    - Her geçişte `machine_state_intervals` kapatılır/açılır. `running → stopped` geçişinde `downtime_logs`'a nedeni boş bir kayıt açılır; tekrar `running` olunca kapatılır.
    - Mikro duruşlar: `plant_settings.min_downtime_seconds` (varsayılan 60 sn) altındaki duruşlar downtime kaydı açmaz ama durum aralığında görünür (Performance kaybına yansır).
-5. **Canlı yayın (Socket.io):** Bağlantı JWT ile doğrulanır. Odalar: `machine:{id}`, `line:{id}`, `plant`. Yayınlanan olaylar: `telemetry` (kısıtlanmış, makine başına en fazla 1/sn), `state`, `downtime_opened`, `downtime_closed`.
+5. **Canlı yayın (Socket.io):** Bağlantı JWT ile doğrulanır (`handshake.auth.token`; HS256, `JWT_SECRET` API ile paylaşılır; zorunlu claim'ler: `sub`, `role`, `type: "access"`). İstemci `subscribe { room }` ile `plant`, `line:{id}` veya `machine:{id}` odalarına katılır. Bağlanınca `snapshot` (tüm makinelerin durumu + son telemetri + edge durumu) gönderilir. Canlı olaylar: `telemetry` (makine başına en fazla 1/sn), `state`, `downtime_opened`, `downtime_closed`, `edge`.
+6. **Sağlık:** `GET /health` → MQTT/DB bağlantısı, tampon boyutu, son yazım zamanı, reddedilen/tekrarlanan mesaj sayıları.
 
 ---
 
@@ -186,12 +187,15 @@ Tag değerleri sayı veya boolean'dır (boolean → 0/1 olarak saklanır). Sözl
 2. **Bağlantı testi (opsiyonel):** `POST /api/machines/{id}/plc/test` — API, Node-RED üzerinden tek seferlik okuma yaptırır ve sonucu döner.
 3. **Akış üretimi:** Aktif makineler taranır, her **hat (line)** için ayrı bir Node-RED sekmesi (flow tab) üretilir. Sekme ID'leri deterministiktir (`mes-line-{line_id}`), böylece yeniden üretimde aynı sekme güncellenir.
    - Makine başına: `s7 endpoint` (config), `s7 in` (tüm değişkenler, `poll_ms`), normalizasyon `function` (payload sözleşmesini üretir), `mqtt out`.
-   - Makine başına durum izleme: `s7 endpoint` durum değişiklikleri `status` topic'ine retained olarak yayınlanır.
-   - Sekme başına heartbeat `inject` düğümü (10 sn) → `factory/_edge/{edge_id}/heartbeat`.
+   - Makine başına durum izleme: `s7 in` düğümünün durum değişiklikleri (`status` düğümü) ve ilk başarılı okuma, `status` topic'ine retained olarak yayınlanır. (S7 düğümünün ilk durum olayı akış başlarken kaçabildiği için normalize fonksiyonu da ilk okumada `online: true` yayınlar.)
+   - Heartbeat ayrı bir edge sekmesindedir (`mes-edge-{edge_id}`): `inject` (10 sn) → `factory/_edge/{edge_id}/heartbeat`.
+   - MQTT kullanıcı bilgileri akışa `${MQTT_USER}` / `${MQTT_PASSWORD}` ortam değişkeni referansı olarak yazılır; şifreler akış JSON'ına ve API'ye girmez.
 4. **Önizleme:** `GET /api/flows/preview` — deploy edilecek JSON ve mevcut durumla farkı (eklenen/değişen/silinen makineler) döner.
 5. **Deploy (sıfır kesinti):** `POST /api/flows/deploy` (yalnızca `admin`/`engineer`).
-   - Her hat sekmesi Node-RED Admin API'sinin **`PUT /flow/{id}`** (yoksa `POST /flow`) uç noktasıyla tek tek güncellenir. Böylece yalnızca değişen hattın bağlantıları yeniden başlar; diğer hatlar ve kullanıcının elle eklediği sekmeler etkilenmez.
-   - Artık aktif olmayan hatların sekmeleri `DELETE /flow/{id}` ile kaldırılır.
+   - Mevcut akış `GET /flows` (API v2, `rev` ile) okunur; `mes-` önekli yönetilen sekmeler/düğümler yenileriyle değiştirilir, kullanıcının sekmelerine dokunulmaz.
+   - Sonuç **`POST /flows`** ile `Node-RED-Deployment-Type: flows` başlığı ve okunan `rev` ile gönderilir. Node-RED yalnızca içeriği değişen sekmeleri yeniden başlatır; diğer hatların PLC bağlantıları kopmaz. Arada başkası deploy ettiyse `409` döner ve işlem tekrarlanır.
+   - (`POST /flow` kullanılmaz: Node-RED verilen sekme ID'sini yok sayıp yeni ID üretir; deterministik ID'ler bozulur.)
+   - Değişiklik yoksa deploy atlanır. Artık aktif olmayan hatların sekmeleri aynı işlemde kaldırılır.
    - Kalıcılık Node-RED'in kendi `flows.json` dosyası üzerinden sağlanır; ayrıca dosyaya yazılmaz.
    - Her deploy `flow_deployments` tablosuna (kim, ne zaman, özet, sonuç) kaydedilir.
 
@@ -205,7 +209,7 @@ Tag değerleri sayı veya boolean'dır (boolean → 0/1 olarak saklanır). Sözl
 ## 8. Ağ, HUBBOX ve Güvenlik
 
 - PLC'ler izole makine ağındadır (`192.168.10.x`) ve dışarıya kapalıdır. Node-RED bu ağa yalnızca HUBBOX Connect X2'nin sağladığı tünel/rota üzerinden erişir. PLC'ye yazma yapılmaz; sistem **salt okunurdur**.
-- **Edge watchdog:** Ingestion heartbeat'i izler; `30 sn` heartbeat gelmezse ilgili edge'e bağlı tüm makineler `offline` işaretlenir ve arayüzde uyarı gösterilir. Tek bir PLC'nin kopması makine düzeyinde `status` mesajıyla ayırt edilir.
+- **Edge watchdog:** Ingestion heartbeat'i izler; `edge_heartbeat_timeout_seconds` (30 sn) boyunca heartbeat gelmezse `edge` olayıyla arayüzde uyarı gösterilir. Makinelerin `offline` durumu ise makine bazında belirlenir (status mesajı veya telemetri zaman aşımı); böylece edge'in tamamen düşmesi ile tek bir PLC'nin kopması ayırt edilir.
 - **EMQX:** Anonim erişim kapalı. Servis başına kullanıcı ve ACL: Node-RED yalnızca `factory/#` yayınlayabilir; ingestion yalnızca abone olabilir. Üretimde TLS (8883).
 - **Node-RED:** `adminAuth` açık; editör ve Admin API yalnızca iç ağdan erişilebilir. API servisi Admin API'ye servis hesabıyla bağlanır.
 - **Uygulama yetkileri:**
@@ -321,7 +325,8 @@ Hedef: **etkileyici ama sade.** Her grafik tek bir soruyu net cevaplar; süs yer
 
 ## 12. Simülatör (`apps/simulator`)
 
-- Her simüle makine için gerçek S7 protokolü konuşan bir sunucu (snap7 tabanlı) açar; böylece Node-RED akışları simülatör ve gerçek PLC için **aynıdır**.
+- Her simüle makine için ayrı portta gerçek S7 protokolü konuşan bir sunucu (python-snap7) açar; böylece Node-RED akışları simülatör ve gerçek PLC için **aynıdır**. Makineler `apps/simulator/machines.yaml` içinde tanımlanır.
+- Kontrol API'si (geliştirme/test): `GET /machines`, `POST /machines/{code}/stop?seconds=`, `/resume`, `/reset-counters`, `/disconnect?seconds=`.
 - Konfigüre edilebilir senaryolar: normal üretim, rastgele duruşlar, mikro duruşlar, hurda oranı, **sayaç sıfırlanması**, bağlantı kopması, yavaş çalışma (Performance kaybı).
 - Simüle makinelerin DB düzeni seed verisindeki `tags_json` ile birebir eşleşir.
 

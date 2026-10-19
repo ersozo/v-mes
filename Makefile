@@ -2,11 +2,15 @@
 NODE_RUN = docker run --rm -v "$(CURDIR)":/w -v vmes2-pnpm-store:/pnpm-store -w /w -e CI=true node:24-alpine \
 	sh -c 'corepack enable >/dev/null 2>&1 && pnpm config set store-dir /pnpm-store >/dev/null && $(1)'
 
-.PHONY: up down logs migrate seed install test build ps
+PY_TEST = docker run --rm -v "$(CURDIR)/apps/$(1)":/src:ro python:3.12-slim \
+	sh -c 'cp -r /src /tmp/app && cd /tmp/app && pip install -q --root-user-action=ignore . pytest >/dev/null && python -m pytest -q'
 
-up:            ## Altyapıyı başlat (MSSQL, EMQX, Node-RED) ve migration'ları uygula
+.PHONY: up down logs migrate seed install test test-ts test-py build ps flows-preview flows-deploy smoke
+
+up:            ## Tüm servisleri başlat ve migration'ları uygula
 	docker compose up -d --build mssql emqx nodered
 	docker compose run --rm db-migrate
+	docker compose up -d --build
 
 down:          ## Konteynerleri durdur (veriler volume'larda kalır)
 	docker compose down
@@ -26,8 +30,24 @@ seed:          ## Migration + geliştirme verisi
 install:
 	$(call NODE_RUN,pnpm install)
 
-test:
+test: test-ts test-py   ## Tüm birim testleri
+
+test-ts:
 	$(call NODE_RUN,pnpm install --frozen-lockfile && pnpm -r test)
+
+test-py:
+	$(call PY_TEST,simulator)
+	$(call PY_TEST,api)
+
+flows-preview: ## Node-RED akış farkını göster
+	docker compose --profile tools run --rm --build flow-cli preview
+
+flows-deploy:  ## Değişen hatları Node-RED'e deploy et
+	docker compose --profile tools run --rm --build flow-cli deploy
+
+smoke:         ## Socket.io canlı yayın duman testi (stack çalışırken)
+	docker run --rm --network v-mes-2_default -v "$(CURDIR)":/w -w /w/apps/ingestion \
+		-e INGESTION_URL=http://ingestion:3001 --env-file .env node:24-alpine node scripts/smoke-realtime.mjs
 
 build:
 	$(call NODE_RUN,pnpm install --frozen-lockfile && pnpm -r build)

@@ -1,0 +1,40 @@
+# Simüle makineler — db/seed/001_dev_seed.sql içindeki makine kodları ve portlarla eşleşmelidir.
+machines:
+  - code: cnc-01
+    port: 10201
+    ideal_cycle_seconds: 45     # mil-a100 için tanımlı ideal süre
+    speed_factor: 0.93
+    scrap_rate: 0.03
+    mtbf_minutes: 20
+    mean_stop_minutes: 4
+    micro_stops_per_hour: 6
+    initial_count: 152300
+    process:
+      - { name: spindle_temp, running_value: 54, idle_value: 26, noise: 0.3, tau_seconds: 240 }
+      - { name: spindle_load, running_value: 63, idle_value: 0, noise: 4, tau_seconds: 5 }
+
+  - code: cnc-02
+    port: 10202
+    ideal_cycle_seconds: 40     # flans-b20
+    speed_factor: 0.85
+    scrap_rate: 0.01
+    mtbf_minutes: 35
+    mean_stop_minutes: 6
+    micro_stops_per_hour: 3
+    initial_count: 87410
+    process:
+      - { name: spindle_temp, running_value: 49, idle_value: 25, noise: 0.3, tau_seconds: 300 }
+      - { name: spindle_load, running_value: 55, idle_value: 0, noise: 5, tau_seconds: 5 }
+
+  - code: pres-01
+    port: 10203
+    ideal_cycle_seconds: 2.5    # braket-c5
+    speed_factor: 0.95
+    scrap_rate: 0.015
+    mtbf_minutes: 15
+    mean_stop_minutes: 2
+    micro_stops_per_hour: 12
+    initial_count: 2104550
+    process:
+      - { name: oil_pressure, running_value: 182, idle_value: 160, noise: 1.5, tau_seconds: 20 }
+      - { name: tonnage, running_value: 48, idle_value: 0, noise: 2, tau_seconds: 2 }
