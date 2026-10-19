@@ -1,0 +1,29 @@
+{
+  "name": "@vmes/contracts",
+  "version": "0.1.0",
+  "private": true,
+  "description": "MES servisleri arasında paylaşılan veri sözleşmeleri (UNS topic'leri, MQTT payload'ları, PLC tag tanımları)",
+  "type": "module",
+  "main": "./dist/src/index.js",
+  "types": "./dist/src/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/src/index.d.ts",
+      "default": "./dist/src/index.js"
+    }
+  },
+  "files": ["dist"],
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json && node dist/scripts/export-json-schema.js",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "zod": "^4.6.7"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "typescript": "^7.0.2",
+    "vitest": "^5.0.5"
+  }
+}

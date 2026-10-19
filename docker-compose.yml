@@ -1,0 +1,90 @@
+name: v-mes-2
+
+services:
+  mssql:
+    image: mcr.microsoft.com/mssql/server:2022-latest
+    environment:
+      ACCEPT_EULA: "Y"
+      MSSQL_PID: Developer
+      MSSQL_SA_PASSWORD: ${MSSQL_SA_PASSWORD:?MSSQL_SA_PASSWORD gerekli}
+      TZ: UTC
+    ports:
+      - "${MSSQL_PORT:-1433}:1433"
+    volumes:
+      - mssql-data:/var/opt/mssql
+    healthcheck:
+      test: ["CMD-SHELL", "/opt/mssql-tools18/bin/sqlcmd -C -S localhost -U sa -P \"$$MSSQL_SA_PASSWORD\" -Q 'SELECT 1' -b -o /dev/null"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+      start_period: 30s
+    restart: unless-stopped
+
+  # Tek seferlik: veritabanını oluşturur, migration'ları uygular (ve DB_SEED=1 ise dev verisini yükler).
+  db-migrate:
+    build: ./db
+    environment:
+      MSSQL_HOST: mssql
+      MSSQL_SA_PASSWORD: ${MSSQL_SA_PASSWORD}
+      MSSQL_DB: ${MSSQL_DB:-MES_DB}
+      MSSQL_APP_USER: ${MSSQL_APP_USER:-mes_app}
+      MSSQL_APP_PASSWORD: ${MSSQL_APP_PASSWORD:?MSSQL_APP_PASSWORD gerekli}
+      DB_SEED: ${DB_SEED:-0}
+    volumes:
+      - ./db:/db:ro
+    depends_on:
+      mssql:
+        condition: service_healthy
+    restart: "no"
+
+  emqx:
+    image: emqx/emqx:5.8.9
+    environment:
+      EMQX_NODE__NAME: emqx@emqx.local
+      EMQX_DASHBOARD__DEFAULT_USERNAME: ${EMQX_DASHBOARD_USER:-admin}
+      EMQX_DASHBOARD__DEFAULT_PASSWORD: ${EMQX_DASHBOARD_PASSWORD:?EMQX_DASHBOARD_PASSWORD gerekli}
+      MQTT_NODERED_USER: ${MQTT_NODERED_USER:-nodered}
+      MQTT_NODERED_PASSWORD: ${MQTT_NODERED_PASSWORD:?MQTT_NODERED_PASSWORD gerekli}
+      MQTT_INGESTION_USER: ${MQTT_INGESTION_USER:-ingestion}
+      MQTT_INGESTION_PASSWORD: ${MQTT_INGESTION_PASSWORD:?MQTT_INGESTION_PASSWORD gerekli}
+    entrypoint: ["/bin/sh", "/opt/mes/entrypoint.sh"]
+    command: ["/opt/emqx/bin/emqx", "foreground"]
+    hostname: emqx.local
+    ports:
+      - "${MQTT_PORT:-1883}:1883"
+      - "${EMQX_DASHBOARD_PORT:-18083}:18083"
+    volumes:
+      - ./infra/emqx:/opt/mes:ro
+      - emqx-data:/opt/emqx/data
+    healthcheck:
+      test: ["CMD", "/opt/emqx/bin/emqx", "ctl", "status"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 20s
+    restart: unless-stopped
+
+  nodered:
+    build: ./infra/nodered
+    environment:
+      TZ: UTC
+      NODERED_ADMIN_USER: ${NODERED_ADMIN_USER:-admin}
+      NODERED_ADMIN_PASSWORD: ${NODERED_ADMIN_PASSWORD:?NODERED_ADMIN_PASSWORD gerekli}
+      NODERED_CREDENTIAL_SECRET: ${NODERED_CREDENTIAL_SECRET:?NODERED_CREDENTIAL_SECRET gerekli}
+      EDGE_ID: ${EDGE_ID:-edge-01}
+      MQTT_HOST: emqx
+      MQTT_USER: ${MQTT_NODERED_USER:-nodered}
+      MQTT_PASSWORD: ${MQTT_NODERED_PASSWORD}
+    ports:
+      - "${NODERED_PORT:-1880}:1880"
+    volumes:
+      - nodered-data:/data
+    depends_on:
+      emqx:
+        condition: service_healthy
+    restart: unless-stopped
+
+volumes:
+  mssql-data:
+  emqx-data:
+  nodered-data:
