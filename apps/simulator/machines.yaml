@@ -11,7 +11,7 @@ machines:
     initial_count: 152300
     process:
       - { name: spindle_temp, running_value: 54, idle_value: 26, noise: 0.3, tau_seconds: 240 }
-      - { name: spindle_load, running_value: 63, idle_value: 0, noise: 4, tau_seconds: 5 }
+      - { name: spindle_load, running_value: 63, idle_value: 0, noise: 4, tau_seconds: 5, min_value: 0 }
 
   - code: cnc-02
     port: 10202
@@ -24,7 +24,7 @@ machines:
     initial_count: 87410
     process:
       - { name: spindle_temp, running_value: 49, idle_value: 25, noise: 0.3, tau_seconds: 300 }
-      - { name: spindle_load, running_value: 55, idle_value: 0, noise: 5, tau_seconds: 5 }
+      - { name: spindle_load, running_value: 55, idle_value: 0, noise: 5, tau_seconds: 5, min_value: 0 }
 
   - code: pres-01
     port: 10203
@@ -37,4 +37,4 @@ machines:
     initial_count: 2104550
     process:
       - { name: oil_pressure, running_value: 182, idle_value: 160, noise: 1.5, tau_seconds: 20 }
-      - { name: tonnage, running_value: 48, idle_value: 0, noise: 2, tau_seconds: 2 }
+      - { name: tonnage, running_value: 48, idle_value: 0, noise: 2, tau_seconds: 2, min_value: 0 }

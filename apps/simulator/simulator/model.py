@@ -39,6 +39,7 @@ class ProcessSignal:
     idle_value: float
     noise: float = 0.0
     tau_seconds: float = 60.0
+    min_value: float | None = None      # fiziksel alt sınır (ör. yük/tonaj eksi olamaz)
     value: float | None = None
 
     def step(self, dt: float, running: bool, rng: random.Random) -> float:
@@ -47,7 +48,8 @@ class ProcessSignal:
             self.value = self.idle_value
         alpha = min(1.0, dt / max(self.tau_seconds, 1e-6))
         self.value += (target - self.value) * alpha
-        return self.value + (rng.gauss(0, self.noise) if self.noise else 0.0)
+        out = self.value + (rng.gauss(0, self.noise) if self.noise else 0.0)
+        return out if self.min_value is None else max(self.min_value, out)
 
 
 @dataclass

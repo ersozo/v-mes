@@ -78,3 +78,9 @@ def test_db_layout_matches_seed():
     assert util.get_bool(db, 8, 0) is True
     assert util.get_int(db, 10) == 1
     assert util.get_real(db, 12) == 42.5
+
+
+def test_process_signal_respects_min_value():
+    sig = ProcessSignal("load", running_value=0, idle_value=0, noise=5, min_value=0)
+    rng = random.Random(3)
+    assert all(sig.step(0.1, False, rng) >= 0 for _ in range(500))

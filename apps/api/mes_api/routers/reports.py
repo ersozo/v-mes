@@ -81,7 +81,8 @@ def oee(ctx: Ctx = Depends(_ctx), group_by: GroupBy = "none", breakdown: Literal
 
     ``group_by=hour&breakdown=machine`` ısı haritası, ``breakdown=machine`` karşılaştırma grafiği içindir.
     """
-    plist = periods(ctx.start, ctx.end, group_by, ctx.tz, ctx.instances) if group_by != "none" else []
+    # Henüz başlamamış dönemler gösterilmez (gelecek boş sütun/nokta üretmesin)
+    plist = [p for p in periods(ctx.start, ctx.end, group_by, ctx.tz, ctx.instances) if p.start < ctx.now] if group_by != "none" else []
     if len(plist) > MAX_PERIODS:
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, f"çok fazla dönem ({len(plist)}); daha büyük bir group_by seçin")
 
@@ -127,7 +128,7 @@ def oee(ctx: Ctx = Depends(_ctx), group_by: GroupBy = "none", breakdown: Literal
 
 def _metrics(r: OeeResult) -> dict:
     d = r.as_dict()
-    return {k: d[k] for k in ("availability", "performance", "quality", "oee", "total_count", "planned_seconds", "run_seconds")}
+    return {k: d[k] for k in ("availability", "performance", "quality", "oee", "total_count", "planned_seconds", "run_seconds", "unattributed_count")}
 
 
 def _by_line(machines: list[MachineInfo], results: dict[int, OeeResult], full: bool = False) -> list[dict]:
@@ -231,7 +232,7 @@ def state_timeline(ctx: Ctx = Depends(_ctx)) -> dict:
 @router.get("/reports/production")
 def production(ctx: Ctx = Depends(_ctx), group_by: GroupBy = "hour", format: Literal["json", "csv"] = "json") -> object:  # noqa: A002
     """Dönem başına toplam/hurda/iyi adet (planlı süre filtresi olmadan, tüm üretim)."""
-    plist = periods(ctx.start, ctx.end, group_by, ctx.tz, ctx.instances)
+    plist = [p for p in periods(ctx.start, ctx.end, group_by, ctx.tz, ctx.instances) if p.start < ctx.now]
     if len(plist) > MAX_PERIODS:
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, "çok fazla dönem; daha büyük bir group_by seçin")
     data = load_machine_data(ctx.conn, ctx.machines, ctx.start, ctx.end)

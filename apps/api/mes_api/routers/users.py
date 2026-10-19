@@ -11,6 +11,7 @@ from pydantic import BaseModel, Field, field_validator
 from mes_api.db import execute, fetch_all, fetch_one
 from mes_api.deps import admin_only, get_db
 from mes_api.security import TokenUser, hash_password, validate_password_strength
+from mes_api.types import UtcDatetime
 
 router = APIRouter(prefix="/api/users", tags=["users"], dependencies=[Depends(admin_only)])
 
@@ -24,8 +25,8 @@ class UserOut(BaseModel):
     display_name: str | None
     role: Role
     is_active: bool
-    created_at: object
-    last_login_at: object | None
+    created_at: UtcDatetime
+    last_login_at: UtcDatetime | None
 
 
 class UserCreate(BaseModel):

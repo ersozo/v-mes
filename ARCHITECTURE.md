@@ -314,38 +314,42 @@ Büyük zaman aralıklarında `/api/telemetry` ham veriyi doğrudan döndürmez;
 Hedef: **etkileyici ama sade.** Her grafik tek bir soruyu net cevaplar; süs yerine veri öne çıkar.
 
 **Grafik türü seçimi**
-- Her rapor kartının köşesinde bir **grafik türü seçici** bulunur. Seçenekler verinin yapısına göre **filtrelenir**; anlamsız kombinasyonlar sunulmaz:
+- Her rapor kartının köşesinde bir **grafik türü seçici** bulunur. Seçenekler verinin yapısına göre **filtrelenir**; anlamsız kombinasyonlar sunulmaz. Her kartta ayrıca **tablo görünümü** (erişilebilir eşdeğer), CSV indirme ve tam ekran vardır.
 
 | Veri | Varsayılan | Seçilebilir türler |
 |---|---|---|
-| Zaman içinde OEE / A / P / Q | Çizgi | Alan, sütun, birleşik (sütun + çizgi) |
-| Anlık OEE özeti | Halka (A/P/Q iç içe) | Gösterge (gauge), KPI kartı |
-| Makine/hat karşılaştırması | Yatay sütun (sıralı) | Gruplu sütun, yığılmış sütun (A/P/Q), tablo |
-| Duruş nedenleri | Pareto (sütun + kümülatif çizgi) | Yatay sütun, ağaç harita (treemap), tablo |
-| OEE kayıp dağılımı | Şelale (planlı süre → OEE süresi) | Yığılmış sütun |
-| Makine × saat/gün yoğunluğu | Isı haritası | Tablo |
-| Durum geçmişi | Zaman çizelgesi (gantt) | — |
-| Üretim adedi | Sütun (hedef çizgisiyle) | Çizgi, kümülatif alan |
-| Proses tag'leri | Çizgi | Alan, nokta |
+| Zaman içinde OEE / A / P / Q | Çizgi (4 seri, tek eksen %0–100) | Alan (OEE), sütun (OEE), A / P / Q ayrı küçük grafikler |
+| OEE özeti | KPI kartları + ilerleme çubuğu (OEE kahraman sayı) | — (tek sayı için grafik kullanılmaz) |
+| Makine/hat karşılaştırması | Yatay sütun, OEE'ye göre sıralı | A / P / Q gruplu, tablo |
+| Duruş nedenleri | Pareto: sıralı yatay sütun + kümülatif pay sütunu; %80'e kadar olanlar vurgulu | Ağaç harita, tablo |
+| OEE kayıp dağılımı | Şelale (planlı → çalışma → net → tam verimli) | Yığılmış tek çubuk |
+| Makine × saat/gün | Isı haritası (tek ton mavi, 7 sınıf) | Tablo |
+| Durum geçmişi | Zaman çizelgesi (gantt) + duruş şeridi + mola bantları | — |
+| Üretim adedi | Yığılmış sütun (iyi + hurda) | Çizgi, kümülatif alan |
+| Proses tag'leri | Çizgi | Min–maks bandı, nokta |
 
-- Seçilen grafik türü, filtreler ve zaman aralığı **URL'de** saklanır (paylaşılabilir bağlantı) ve kullanıcı tercihi olarak hatırlanır.
+- **Çift eksenli grafik kullanılmaz.** Klasik Pareto'daki "sütun + kümülatif % çizgisi" ve "sütun + çizgi birleşik" grafikleri iki farklı ölçeği üst üste bindirip olmayan bir ilişki izlenimi verdiği için yerine sırasıyla kümülatif pay sütunu ve küçük çoklu grafikler kullanılır. Farklı birimli tag'ler ayrı grafiklerde gösterilir.
+- Seçilen grafik türü, filtreler ve zaman aralığı **URL'de** saklanır (paylaşılabilir bağlantı); son seçilen tür ayrıca kullanıcı tercihi olarak hatırlanır.
 
 **Görsel dil**
-- Nötr zemin, tek vurgu rengi; seri sayısı azsa renkler kategorik, çoksa gri + vurgulanan seri.
-- Durum renkleri tüm uygulamada sabit: çalışıyor = yeşil, duruyor = kırmızı, planlı duruş = mavi, offline = gri. Renk tek başına bilgi taşımaz; ikon/etiketle desteklenir (renk körlüğü).
-- Az ızgara çizgisi, okunaklı eksenler, doğrudan seri etiketleri (mümkünse lejant yerine), tutarlı tooltip formatı (yerel saat, birim, yüzde 1 ondalık).
-- Açık/koyu tema desteği; grafik renkleri tema token'larından gelir.
-- Yumuşak geçiş animasyonları (veri değişiminde), ama canlı panelde animasyon kapalı (dikkat dağıtmaması için).
-- Boş veri, eksik ideal çevrim süresi ve veri boşlukları grafikte açıkça gösterilir ("veri yok" bölgesi), sıfırla doldurulmaz.
+- Renkler veri görselleştirme rehberinin **doğrulanmış referans paletinden** gelir (kategorik sıra renk körlüğüne göre doğrulanmıştır; sıra değiştirilmez). Seri rengi varlığa bağlıdır, sıraya değil.
+- Durum renkleri tüm uygulamada sabit: çalışıyor = yeşil, duruyor = kırmızı, planlı duruş = mavi, bağlantı yok = gri, ürün/takım değişimi = sarı, nedeni girilmemiş = turuncu. Renk tek başına bilgi taşımaz; **her zaman ikon + etiketle** birlikte kullanılır.
+- İnce işaretler (çizgi 2 px, çubuk ≤ 24 px, yuvarlatılmış uç), düz ve silik ızgara, yığın segmentleri arasında zemin rengi boşluk. Metin hiçbir zaman seri renginde değildir. 2+ seri varsa lejant her zaman vardır.
+- Açık/koyu tema: koyu tema otomatik ters çevirme değil, aynı tonların koyu zemin için seçilmiş adımlarıdır. Sistem tercihi + kullanıcı seçimi (sistem / açık / koyu).
+- Veri olmayan dönemler sıfırla doldurulmaz: ısı haritasında "planlı üretim / veri yok" taralı, "OEE hesaplanamadı" (ör. iş emri yok) ayrı işaretle gösterilir; karşılaştırmada çubuk yerine nedeni yazılır.
+- Yenilemede iskelet yanıp sönmez; önceki çizim soluklaşarak korunur.
 
 **Etkileşim**
-- Üstte ortak filtre çubuğu: zaman aralığı (hazır seçenekler: bu vardiya, dün, son 7 gün, bu ay + özel), vardiya, alan/hat/makine, ürün.
-- **Karşılaştırma modu:** seçili dönemi önceki dönemle üst üste göster.
-- Grafikten detaya inme (drill-down): hat sütununa tıkla → hattın makineleri; pareto çubuğuna tıkla → ilgili duruş kayıtları.
-- Her kartta CSV dışa aktarma ve tam ekran.
+- Üstte yapışkan, tek filtre çubuğu: kapsam (fabrika / alan / hat / makine), zaman aralığı (bu vardiya, bugün, dün, son 7 gün, bu ay, özel), dönem (saat / vardiya / gün / hafta).
+- **Karşılaştırma modu:** KPI kartlarında aynı uzunluktaki önceki döneme göre puan farkı.
+- Detaya inme: karşılaştırmada hat ↔ makine geçişi; Pareto çubuğuna tıklayınca o nedene ait duruş kayıtları; zaman çizelgesinde duruşa tıklayınca neden atama (operatör+).
+- Her kartta CSV dışa aktarma ve tam ekran (Esc ile çıkış).
 
 **Teknik**
-- Recharts; ısı haritası, gantt ve şelale için Recharts üzerine ince özel bileşenler. Tüm grafikler ortak bir `ChartCard` sarmalayıcısı (başlık, tür seçici, durum: yükleniyor/boş/hata, dışa aktarma) içinde kullanılır.
+- Recharts (çizgi, alan, sütun, şelale, ağaç harita); ısı haritası ve gantt özel HTML bileşenleridir. Tüm grafikler ortak `ChartCard` sarmalayıcısı (başlık, tür seçici, tablo görünümü, yükleniyor/boş/hata durumu, CSV, tam ekran) içinde kullanılır.
+- Canlı veri Socket.io deposundan (`useSyncExternalStore`) gelir; REST verisi TanStack Query ile önbelleklenir. Access token yalnızca bellekte tutulur; sayfa yenilendiğinde refresh çereziyle oturum geri yüklenir.
+- Ön yüz nginx konteynerinde sunulur; `/api` ve `/socket.io` aynı origin üzerinden API ve ingestion'a yönlendirilir (CORS ve çerez sorunları yoktur). Güvenlik başlıkları (CSP, X-Frame-Options vb.) nginx tarafından eklenir.
+- Tarih/saatler her zaman fabrika saat diliminde gösterilir (tarayıcının saat diliminden bağımsız).
 
 ---
 

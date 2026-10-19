@@ -3,7 +3,9 @@
 // Kurallar (ARCHITECTURE.md §6.3):
 //   d = yeni − önceki
 //   d ≥ 0          → artış
-//   d < 0          → sayaç sıfırlanması/taşması: artış = yeni değer
+//   d < 0          → yeni değer sıfıra yakınsa (önceki değerin yarısından küçük ve ≤ maxDelta)
+//                    sayaç sıfırlanması/taşması: artış = yeni değer;
+//                    değilse anomali (ör. PLC programı eski değerle yeniden yüklendi): artış sayılmaz
 //   d > maxDelta   → anomali (ör. sayaç ön ayarı, bozuk okuma): artış sayılmaz
 // Zamanı geride kalan (tekrar/sıra dışı) örnekler yok sayılır.
 
@@ -73,7 +75,8 @@ export class CounterTracker {
     if (d >= 0) {
       result = d > this.maxDelta ? { delta: 0, event: "anomaly" } : { delta: d };
     } else {
-      result = value > this.maxDelta ? { delta: 0, event: "anomaly" } : { delta: value, event: "reset" };
+      const nearZero = value <= this.maxDelta && value < prev.value / 2;
+      result = nearZero ? { delta: value, event: "reset" } : { delta: 0, event: "anomaly" };
     }
 
     if (result.delta > 0) {

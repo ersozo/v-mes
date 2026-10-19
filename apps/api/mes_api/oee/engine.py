@@ -128,7 +128,10 @@ class OeeResult:
         if self.performance is not None and self.performance > 1.0:
             warnings.append("Performans %100'ün üzerinde: ideal çevrim süresi gerçekten kısa olabilir")
         if self.no_data_seconds > 0:
-            warnings.append(f"{round(self.no_data_seconds / 60)} dk boyunca veri yok; bu süre hesaba katılmadı")
+            if self.machine_count > 1:
+                warnings.append(f"Toplam {duration_text(self.no_data_seconds)} makine-süresi boyunca veri yok (makineler toplamı); bu süre hesaba katılmadı")
+            else:
+                warnings.append(f"{duration_text(self.no_data_seconds)} boyunca veri yok; bu süre hesaba katılmadı")
         return {
             "availability": _r(self.availability),
             "performance": _r(self.performance),
@@ -157,6 +160,14 @@ class OeeResult:
             "machine_count": self.machine_count,
             "warnings": warnings,
         }
+
+
+def duration_text(seconds: float) -> str:
+    minutes = round(seconds / 60)
+    if minutes < 60:
+        return f"{minutes} dk"
+    hours, rest = divmod(minutes, 60)
+    return f"{hours} sa {rest} dk" if rest else f"{hours} sa"
 
 
 def _r(v: float | None) -> float | None:

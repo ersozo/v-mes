@@ -21,6 +21,17 @@ describe("CounterTracker", () => {
     expect(deltas.reduce((s, d) => s + d.delta, 0)).toBe(10 + 4 + 5);
   });
 
+  it("önceki değere yakın bir değere geri düşüş sıfırlanma değil anomalidir", () => {
+    // Örn. PLC programı eski bir değerle yeniden yüklendi: 3.100 → 3.046 (3.046 adet "üretim" değildir)
+    const c = new CounterTracker(10_000);
+    c.observe(1, "scrap_count", 3100, t(0));
+    expect(c.observe(1, "scrap_count", 3046, t(1))).toEqual({ delta: 0, event: "anomaly" });
+    expect(c.observe(1, "scrap_count", 3047, t(2))).toEqual({ delta: 1 });
+    // WORD taşması (65535 → 5) gerçek bir sıfırlanmadır
+    c.observe(2, "total_count", 65530, t(0));
+    expect(c.observe(2, "total_count", 5, t(1))).toEqual({ delta: 5, event: "reset" });
+  });
+
   it("aşırı sıçramaları anomali olarak işaretler ve saymaz", () => {
     const c = new CounterTracker(100);
     c.observe(1, "total_count", 10, t(0));

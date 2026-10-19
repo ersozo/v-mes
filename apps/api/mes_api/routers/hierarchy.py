@@ -14,6 +14,7 @@ from mes_api.db import execute, fetch_all, fetch_one
 from mes_api.deps import any_user, can_configure, get_db
 from mes_api.plc import TagDefinition, check_required_roles, find_overlapping_tags, validate_tag_list
 from mes_api.security import TokenUser
+from mes_api.types import UtcDatetime
 
 router = APIRouter(prefix="/api", tags=["hierarchy"])
 
@@ -147,7 +148,7 @@ class PlcConfigIn(BaseModel):
 
 
 class PlcConfigOut(PlcConfigIn):
-    updated_at: object
+    updated_at: UtcDatetime
     updated_by: int | None
     warnings: list[str] = []
 

@@ -151,6 +151,18 @@ services:
       start_period: 15s
     restart: unless-stopped
 
+  # Ön yüz: statik React derlemesi + /api ve /socket.io için ters vekil (tek origin)
+  web:
+    build:
+      context: .
+      dockerfile: apps/web/Dockerfile
+    ports:
+      - "${WEB_PORT:-8080}:8080"
+    depends_on:
+      - api
+      - ingestion
+    restart: unless-stopped
+
   # Geliştirme: S7-1200/1500 simülatörü (makine başına ayrı S7 portu) + kontrol API'si
   simulator:
     build: ./apps/simulator

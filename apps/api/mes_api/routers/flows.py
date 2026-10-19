@@ -13,6 +13,7 @@ from mes_api.deps import can_configure, get_db
 from mes_api.flows.generator import build_managed_flows, diff_managed, merge_into_existing
 from mes_api.flows.nodered import FlowConflictError, NodeRedAdmin, NodeRedError
 from mes_api.flows.repository import load_line_specs
+from mes_api.oee.window import iso
 from mes_api.security import TokenUser
 from mes_api.settings import NodeRedSettings, edge_id
 
@@ -94,4 +95,5 @@ def deployments(limit: int = 50, conn: pymssql.Connection = Depends(get_db)) -> 
         ORDER BY d.id DESC""", (max(1, min(limit, 500)),))
     for r in rows:
         r["summary"] = json.loads(r.pop("summary_json")) if r["summary_json"] else None
+        r["deployed_at"] = iso(r["deployed_at"])
     return rows
