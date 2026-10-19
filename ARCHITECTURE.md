@@ -239,8 +239,9 @@ Tag değerleri sayı veya boolean'dır (boolean → 0/1 olarak saklanır). Sözl
 Tüm bileşenler **0–1 arası oran** olarak hesaplanır; yalnızca arayüzde yüzde olarak gösterilir.
 
 ```
-Planlı Süre       = Pencere içindeki vardiya süresi − planlı duruşlar
-Çalışma Süresi    = Planlı Süre − plansız duruşlar (stopped + offline)
+Vardiya Süresi    = Pencere ∩ vardiya aralıkları (gelecek hariç)
+Planlı Süre       = Vardiya süresi − planlı duruş tanımları − "planned" kategorili duruşlar − verisiz süre
+Çalışma Süresi    = Planlı Süre − plansız duruşlar (unplanned + changeover + nedeni atanmamış)
 
 Availability (A)  = Çalışma Süresi / Planlı Süre
 Performance  (P)  = Σ (ideal_cycle_seconds × adet) / Çalışma Süresi      # ürün değişimlerine göre parça parça
@@ -248,11 +249,16 @@ Quality      (Q)  = İyi Adet / Toplam Adet,   İyi Adet = Toplam − Hurda
 OEE               = A × P × Q
 ```
 
-- **Adetler** yalnızca `counter_deltas_1m` toplamından gelir (bkz. §6.3). Hurda: `scrap_source = 'plc'` ise sayaç farkı, `manual` ise `manual_scrap_entries` toplamı.
-- **İdeal çevrim süresi**, ilgili zaman diliminde makinede çalışan iş emrinin ürününe göre `product_machine_rates` tablosundan alınır. İş emri yoksa ya da eşleşme tanımlı değilse Performance "hesaplanamadı" olarak işaretlenir (sessizce 0 veya 1 yazılmaz).
-- P > 1 çıkarsa (ideal süre yanlış girilmiş demektir) değer raporlanır ama uyarı gösterilir; kırpılmaz.
-- Vardiya dışı zamanlar Planlı Süre'ye girmez; vardiya dışında üretim olursa ayrıca raporlanır.
-- **Kayıp analizi:** Rapor ekranında A, P, Q kayıpları süre cinsinden de gösterilir (duruş kaybı, hız kaybı, kalite kaybı).
+- **Kullanılabilirlik kaybı yalnızca kayıtlı duruşlardan** (`downtime_logs`, ≥ `min_downtime_seconds`) gelir. Mikro duruşlar çalışma süresinde kalır ve performans kaybı olarak görünür.
+- **Nedeni atanmamış duruşlar** plansız sayılır (operatör neden atayana kadar). Operatör "planned" kategorili bir neden atarsa o süre planlı süreden düşülür.
+- **Verisiz süre** (vardiya içinde hiç durum aralığı olmayan zaman; ör. ingestion veya edge kapalıyken) makineye ne kayıp ne kazanç yazılır: planlı süreden düşülür, `no_data_seconds` olarak raporlanır ve uyarı üretilir.
+- **Adetler** yalnızca `counter_deltas_1m` toplamından gelir (bkz. §6.3). Dakika kovası, başlangıcı planlı sürede ise OEE'ye dahildir; planlı süre dışındaki üretim `off_plan_count` olarak ayrıca raporlanır. Hurda: `scrap_source = 'plc'` ise sayaç farkı, `manual` ise `manual_scrap_entries` toplamı (toplam adetle sınırlı).
+- **İdeal çevrim süresi**, ilgili dakikada makinede çalışan iş emrinin (`production_order_runs`) ürününe göre `product_machine_rates` tablosundan alınır. İş emri olmadan veya çevrim süresi tanımsız üretilen adet varsa (`unattributed_count`) Performance ve OEE `null` döner ve uyarı üretilir (sessizce 0 veya 1 yazılmaz).
+- Hiç üretim yoksa Quality tanımsızdır (`null`) ama OEE sıfırdır (P = 0).
+- P > 1 çıkarsa değer raporlanır ve uyarı gösterilir; kırpılmaz.
+- **Toplama** (hat/alan/fabrika, çok dönemli özet) süre ve adetlerin toplanmasıyla yapılır; makine oranlarının ortalaması alınmaz.
+- **Kayıp şelalesi** (saniye): planlı süre → çalışma (kullanılabilirlik kaybı) → net çalışma = Σ ideal × toplam (performans kaybı) → tam verimli = Σ ideal × iyi (kalite kaybı).
+- **Dönemler** (`group_by`: hour, shift, day, week) fabrika yerel saatine göre ve yaz saati geçişlerine dayanıklı hesaplanır (yaz saati bitiş günü 25 saat).
 - Hesaplar `apps/api` içindeki tek bir OEE modülünde yapılır; aynı fonksiyon hem rapor endpoint'lerini hem canlı vardiya özetini besler. Birim testleri sayaç sıfırlanması, gece yarısını aşan vardiya, iş emri değişimi ve veri boşluğu senaryolarını kapsar.
 
 ---
@@ -267,15 +273,25 @@ PUT    /api/products/{id}/rates         GET/PATCH /api/settings
 GET    /api/auth/me                     /api/docs (OpenAPI)
 GET/PUT /api/machines/{id}/plc          POST /api/machines/{id}/plc/validate   (POST .../plc/test → aşama 7)
 GET    /api/flows/preview               POST /api/flows/deploy        GET /api/flows/deployments
-CRUD   /api/production-orders           POST /api/production-orders/{id}/start|pause|complete
-GET    /api/downtimes?machine_id&from&to&unassigned
-PATCH  /api/downtimes/{id}              (neden atama)
-POST   /api/scrap                       (manuel hurda)
-GET    /api/oee?scope=plant|area|line|machine&id&from&to&group_by=hour|shift|day|week
-GET    /api/reports/downtime-pareto?...   /api/reports/production?...   /api/reports/state-timeline?...
-GET    /api/telemetry?machine_id&tags&from&to&resolution   (otomatik örnekleme ile)
-GET    /api/reports/*.csv               (aynı raporların CSV dışa aktarımı)
+CRUD   /api/production-orders           POST /api/production-orders/{id}/start|pause|complete|cancel
+GET    /api/downtimes?machine_id&line_id&from&to&unassigned
+PATCH  /api/downtimes/{id}              (neden atama + not)
+GET/POST /api/scrap                     DELETE /api/scrap/{id} (engineer+)
+GET    /api/operator/machines/{id}      (aktif iş emri, kuyruk, nedeni atanmamış duruşlar — tek çağrı)
+
+# Raporlar — ortak parametreler: scope=plant|area|line|machine, id, from/to (ISO-8601) veya
+# preset=current_shift|today|yesterday|last_24h|last_7_days|this_week|this_month, format=json|csv
+GET    /api/oee?group_by=none|hour|shift|day|week&breakdown=none|machine|line
+GET    /api/oee/live                    (mevcut vardiya, makine başına)
+GET    /api/reports/downtime-pareto     (azalan sıralı, kümülatif pay; "Nedeni atanmamış" dahil)
+GET    /api/reports/state-timeline      (gantt: durum aralıkları + duruşlar + vardiyalar)
+GET    /api/reports/production?group_by=...
+GET    /api/telemetry?machine_id&tags&max_points (otomatik zaman kovası: avg/min/max/n)
 ```
+
+- CSV çıktıları `;` ayraçlı ve UTF-8 BOM'ludur (Excel Türkçe karakterleri doğru açar).
+- Tüm zaman damgaları UTC ISO-8601 (`Z`) döner; dönem etiketleri yerel saattir. Yanıtlar `window` alanında çözümlenen aralığı ve saat dilimini içerir.
+- İş emri ilerlemesi: üretilen/hurda/iyi adet, hedefe oran ve kalan ideal süre, iş emrinin çalıştığı aralıklardaki sayaç farklarından hesaplanır. Bir makinede aynı anda tek iş emri çalışabilir.
 
 Büyük zaman aralıklarında `/api/telemetry` ham veriyi doğrudan döndürmez; aralığa göre zaman kovalarında (`avg/min/max`) özetleyerek en fazla ~2.000 nokta döner.
 

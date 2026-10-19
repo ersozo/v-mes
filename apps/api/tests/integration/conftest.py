@@ -63,3 +63,22 @@ def users(client, admin) -> dict[str, dict[str, str]]:
 
 def unique(prefix: str) -> str:
     return f"{prefix}-{uuid.uuid4().hex[:8]}"
+
+
+@pytest.fixture
+def db():
+    """Test verisini doğrudan yazmak için MES_TEST bağlantısı."""
+    from mes_api.db import connect
+    from mes_api.settings import DbSettings
+
+    with connect(DbSettings.from_env()) as conn:
+        yield conn
+
+
+def make_line_and_machine(client, admin, **machine) -> dict:
+    area = client.post("/api/areas", headers=admin, json={"slug": unique("area"), "name": "Rapor Alanı"}).json()
+    line = client.post("/api/lines", headers=admin, json={"area_id": area["id"], "slug": "hat-1", "name": "Rapor Hattı"}).json()
+    body = {"line_id": line["id"], "code": unique("m"), "name": "Rapor Makinesi", "state_source": "counter", **machine}
+    r = client.post("/api/machines", headers=admin, json=body)
+    assert r.status_code == 201, r.text
+    return {**r.json(), "area_id": area["id"]}
