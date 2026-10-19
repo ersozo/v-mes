@@ -10,6 +10,7 @@ PLC (S7-1200/1500) → Node-RED (edge) → EMQX (MQTT) → Ingestion → MS SQL 
 
 Mimari kararlar, veri modeli ve OEE hesaplama kuralları: **[ARCHITECTURE.md](ARCHITECTURE.md)**.
 Windows sanal makine + WSL2 üzerine adım adım kurulum: **[docs/KURULUM-WSL.md](docs/KURULUM-WSL.md)**.
+Yeni makine (ve HUBBOX) ekleme iş akışı: **[docs/YENI-MAKINE-EKLEME.md](docs/YENI-MAKINE-EKLEME.md)**.
 
 ---
 
