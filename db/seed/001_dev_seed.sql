@@ -28,6 +28,11 @@ SELECT a.id, 'hat-1', N'Pres Hattı 1', 1 FROM dbo.areas a
 WHERE a.slug = 'pres'
   AND NOT EXISTS (SELECT 1 FROM dbo.lines l WHERE l.area_id = a.id AND l.slug = 'hat-1');
 
+-- Edge: geliştirmede compose'daki Node-RED
+INSERT INTO dbo.edges (code, name, nodered_url)
+SELECT 'edge-01', N'Geliştirme Node-RED', 'http://nodered:1880'
+WHERE NOT EXISTS (SELECT 1 FROM dbo.edges WHERE code = 'edge-01');
+
 -- Makineler: üç farklı durum/hurda kaynağı kombinasyonu
 DECLARE @cnc_line int = (SELECT l.id FROM dbo.lines l JOIN dbo.areas a ON a.id = l.area_id WHERE a.slug = 'talasli-imalat' AND l.slug = 'hat-1');
 DECLARE @pres_line int = (SELECT l.id FROM dbo.lines l JOIN dbo.areas a ON a.id = l.area_id WHERE a.slug = 'pres' AND l.slug = 'hat-1');
@@ -44,8 +49,8 @@ WHERE NOT EXISTS (SELECT 1 FROM dbo.machines m WHERE m.code = v.code);
 UPDATE dbo.machines SET counter_idle_seconds = 30 WHERE code = 'pres-01' AND counter_idle_seconds = 120;
 
 -- PLC konfigürasyonları (simülatör: host "simulator", makine başına ayrı port)
-INSERT INTO dbo.machine_plc_configs (machine_id, host, port, rack, slot, poll_ms, tags_json)
-SELECT m.id, 'simulator', v.port, 0, 1, 1000, v.tags_json
+INSERT INTO dbo.machine_plc_configs (machine_id, edge_id, host, port, rack, slot, poll_ms, tags_json)
+SELECT m.id, (SELECT id FROM dbo.edges WHERE code = 'edge-01'), 'simulator', v.port, 0, 1, 1000, v.tags_json
 FROM (VALUES
     ('cnc-01', 10201, N'[
         {"name":"total_count","address":"DB1,DINT0","role":"total_count","unit":"pcs"},

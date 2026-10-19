@@ -9,6 +9,7 @@ import { setPlantTimezone } from "./lib/format";
 import type { PlantSettings } from "./lib/types";
 import { ConfiguratorPage } from "./pages/Configurator";
 import { DefinitionsPage } from "./pages/Definitions";
+import { EdgesPage } from "./pages/Edges";
 import { LiveDashboard } from "./pages/LiveDashboard";
 import { LoginPage } from "./pages/Login";
 import { MachineDetailPage } from "./pages/MachineDetail";
@@ -48,6 +49,7 @@ const router = createBrowserRouter([
       { path: "operator", element: <RequireAuth need="operate"><OperatorPage /></RequireAuth> },
       { path: "configurator", element: <RequireAuth need="configure"><ConfiguratorPage /></RequireAuth> },
       { path: "definitions", element: <RequireAuth need="configure"><DefinitionsPage /></RequireAuth> },
+      { path: "edges", element: <RequireAuth need="configure"><EdgesPage /></RequireAuth> },
       { path: "users", element: <RequireAuth need="admin"><UsersPage /></RequireAuth> },
       { path: "*", element: <Navigate to="/" replace /> },
     ],

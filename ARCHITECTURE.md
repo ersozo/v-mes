@@ -123,8 +123,9 @@ Tag değerleri sayı veya boolean'dır (boolean → 0/1 olarak saklanır). Sözl
 |---|---|
 | `areas` | `id`, `slug`, `name` |
 | `lines` | `id`, `area_id`, `slug`, `name` |
+| `edges` | `id`, `code` (heartbeat topic'indeki edge_id), `name`, `nodered_url`, `is_active` |
 | `machines` | `id`, `line_id`, `code`, `name`, `is_active`, `state_source` (`tag` \| `counter`), `counter_idle_seconds`, `scrap_source` (`plc` \| `manual`) |
-| `machine_plc_configs` | `machine_id`, `protocol` (`s7`), `host`, `port`, `rack`, `slot`, `poll_ms`, `tags_json`, `updated_at` |
+| `machine_plc_configs` | `machine_id`, `edge_id` (PLC'yi okuyan edge), `protocol` (`s7`), `host`, `port`, `rack`, `slot`, `poll_ms`, `tags_json`, `updated_at` |
 | `products` | `id`, `code`, `name` |
 | `product_machine_rates` | `product_id`, `machine_id`, `ideal_cycle_seconds` |
 | `shift_definitions` | `id`, `name`, `start_local`, `end_local`, `days_mask` (gece yarısını aşan vardiya desteklenir) |
@@ -186,13 +187,14 @@ Tag değerleri sayı veya boolean'dır (boolean → 0/1 olarak saklanır). Sözl
 1. **Kayıt/Güncelleme:** Web arayüzü (Zero-Code PLC konfigüratörü) veya REST API ile makine, bağlantı ve tag bilgileri girilir. API adres sözdizimini ve zorunlu rolleri doğrular.
 2. **Doğrulama:** `POST /api/machines/{id}/plc/validate` kaydetmeden doğrular (adres sözdizimi, rol-tip uyumu, zorunlu roller, çakışan adres uyarıları); konfigüratördeki anlık geri bildirim içindir. Adresler kanonik biçimde saklanır (`db1,di4` → `DB1,DINT4`).
    - **Bağlantı testi** (`POST /api/machines/{id}/plc/test`, Node-RED üzerinden tek seferlik okuma) fiziksel test PLC'si hazır olduğunda, son aşamada eklenecektir.
-3. **Akış üretimi:** Aktif makineler taranır, her **hat (line)** için ayrı bir Node-RED sekmesi (flow tab) üretilir. Sekme ID'leri deterministiktir (`mes-line-{line_id}`), böylece yeniden üretimde aynı sekme güncellenir.
+3. **Edge'ler:** Her makinenin PLC'si bir edge tarafından okunur (tipik olarak makine başına bir HUBBOX gateway'i; `dbo.edges`, atama `machine_plc_configs.edge_id`). Edge'ler arayüzden kaydedilir (kod, ad, Node-RED adresi); Node-RED kimlik bilgileri tüm edge'ler için ortaktır (`EDGE_NODERED_USER/PASSWORD`). Her edge için salt okunur **uyumluluk kontrolü** vardır (erişim, kimlik doğrulama, Node-RED ve `node-red-contrib-s7` sürümü, mevcut sekmeler/S7 bağlantıları).
+4. **Akış üretimi:** Her edge için ayrı üretilir: edge'e atanmış makineler hatlarına göre gruplanır ve her hat için bir Node-RED sekmesi (flow tab) üretilir; edge yalnızca kendi makinelerini okur. Sekme ID'leri deterministiktir (`mes-line-{line_id}`, `mes-edge-{edge_kodu}`), böylece yeniden üretimde aynı sekme güncellenir. Ortam değişkenleri yönetilemeyen edge'lerde (HUBBOX) MQTT bilgileri akışa yazılır (`FLOW_MQTT_MODE=inline`; şifre Node-RED credential deposunda, değişikliği HMAC parmak iziyle farkta görünür).
    - Makine başına: `s7 endpoint` (config), `s7 in` (tüm değişkenler, `poll_ms`), normalizasyon `function` (payload sözleşmesini üretir), `mqtt out`.
    - Makine başına durum izleme: `s7 in` düğümünün durum değişiklikleri (`status` düğümü) ve ilk başarılı okuma, `status` topic'ine retained olarak yayınlanır. (S7 düğümünün ilk durum olayı akış başlarken kaçabildiği için normalize fonksiyonu da ilk okumada `online: true` yayınlar.)
    - Heartbeat ayrı bir edge sekmesindedir (`mes-edge-{edge_id}`): `inject` (10 sn) → `factory/_edge/{edge_id}/heartbeat`.
    - MQTT kullanıcı bilgileri akışa `${MQTT_USER}` / `${MQTT_PASSWORD}` ortam değişkeni referansı olarak yazılır; şifreler akış JSON'ına ve API'ye girmez.
-4. **Önizleme:** `GET /api/flows/preview` — deploy edilecek JSON ve mevcut durumla farkı (eklenen/değişen/silinen makineler) döner.
-5. **Deploy (sıfır kesinti):** `POST /api/flows/deploy` (yalnızca `admin`/`engineer`).
+5. **Önizleme:** `GET /api/flows/preview` — edge başına mevcut durumla fark (eklenen/değişen/silinen sekmeler) ve erişilemeyen edge'ler.
+6. **Deploy (sıfır kesinti):** `POST /api/flows/deploy[?edge_id=]` (yalnızca `admin`/`engineer`). Her edge bağımsızdır: erişilemeyen bir edge diğerlerinin dağıtımını engellemez; sonuç ve geçmiş edge başına tutulur.
    - Mevcut akış `GET /flows` (API v2, `rev` ile) okunur; `mes-` önekli yönetilen sekmeler/düğümler yenileriyle değiştirilir, kullanıcının sekmelerine dokunulmaz.
    - Sonuç **`POST /flows`** ile `Node-RED-Deployment-Type: flows` başlığı ve okunan `rev` ile gönderilir. Node-RED yalnızca içeriği değişen sekmeleri yeniden başlatır; diğer hatların PLC bağlantıları kopmaz. Arada başkası deploy ettiyse `409` döner ve işlem tekrarlanır.
    - (`POST /flow` kullanılmaz: Node-RED verilen sekme ID'sini yok sayıp yeni ID üretir; deterministik ID'ler bozulur.)

@@ -62,7 +62,7 @@ build:
 
 e2e:           ## Uçtan uca tarayıcı testleri (çalışan dev stack'e karşı; simülatör gerekir)
 	docker run --rm --network v-mes-2_default -v "$(CURDIR)/e2e":/e2e -v vmes2-e2e-npm:/e2e/node_modules -w /e2e \
-		--env-file .env -e BASE_URL=http://web:8080 -e SIMULATOR_URL=http://simulator:8090 \
+		--env-file .env -e BASE_URL=http://web:8080 -e SIMULATOR_URL=http://simulator:8090 -e API_URL=http://api:8000 \
 		mcr.microsoft.com/playwright:v1.64.0-noble \
 		sh -c 'test -d node_modules/@playwright/test || npm i --no-save --silent @playwright/test@1.64.0; npx playwright test'
 

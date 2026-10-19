@@ -32,6 +32,21 @@ describe("CounterTracker", () => {
     expect(c.observe(2, "total_count", 5, t(1))).toEqual({ delta: 5, event: "reset" });
   });
 
+  it("16 bit (WORD/UInt) sayaç taşmasında aradaki adetleri kaybetmez", () => {
+    const c = new CounterTracker(10_000);
+    c.observe(1, "total_count", 65_530, t(0), 65_536);
+    // 65530 → 65535 → 0 → 4: gerçek artış 6 + 4 = 10
+    expect(c.observe(1, "total_count", 4, t(1), 65_536)).toEqual({ delta: 10, event: "wrap" });
+    expect(c.observe(1, "total_count", 7, t(2), 65_536)).toEqual({ delta: 3 });
+  });
+
+  it("işaretsiz sayaçta üst sınırdan uzakta sıfıra düşüş taşma değil sıfırlanmadır", () => {
+    const c = new CounterTracker(10_000);
+    c.observe(1, "total_count", 60_000, t(0), 65_536);
+    // taşma sayılsaydı 5.536 + 2 adet yazılırdı
+    expect(c.observe(1, "total_count", 2, t(1), 65_536)).toEqual({ delta: 2, event: "reset" });
+  });
+
   it("aşırı sıçramaları anomali olarak işaretler ve saymaz", () => {
     const c = new CounterTracker(100);
     c.observe(1, "total_count", 10, t(0));

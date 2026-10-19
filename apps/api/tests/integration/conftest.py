@@ -76,10 +76,16 @@ def db():
         yield conn
 
 
+def default_edge_id(client, admin) -> int:
+    return next(e["id"] for e in client.get("/api/edges", headers=admin).json() if e["code"] == "edge-01")
+
+
 def make_line_and_machine(client, admin, **machine) -> dict:
     area = client.post("/api/areas", headers=admin, json={"slug": unique("area"), "name": "Rapor Alanı"}).json()
     line = client.post("/api/lines", headers=admin, json={"area_id": area["id"], "slug": "hat-1", "name": "Rapor Hattı"}).json()
     body = {"line_id": line["id"], "code": unique("m"), "name": "Rapor Makinesi", "state_source": "counter", **machine}
+    if body.get("plc") and "edge_id" not in body["plc"]:
+        body["plc"] = {**body["plc"], "edge_id": default_edge_id(client, admin)}
     r = client.post("/api/machines", headers=admin, json=body)
     assert r.status_code == 201, r.text
     return {**r.json(), "area_id": area["id"]}

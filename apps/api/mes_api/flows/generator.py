@@ -40,6 +40,7 @@ class TagSpec:
 class MachineSpec:
     code: str
     name: str
+    edge: str                 # makineyi okuyan edge'in kodu (heartbeat topic'indeki edge_id)
     host: str
     port: int
     rack: int
@@ -54,7 +55,6 @@ class LineSpec:
     area_slug: str
     slug: str
     name: str
-    edge_id: str
     machines: tuple[MachineSpec, ...] = field(default_factory=tuple)
 
 
@@ -312,10 +312,12 @@ def _machine_nodes(tab: str, line: LineSpec, m: MachineSpec, row: int, mqtt_out_
     ]
 
 
-def build_line_flow(line: LineSpec, mqtt: MqttOptions = MqttOptions()) -> list[dict]:
+def build_line_flow(line: LineSpec, edge_id: str, mqtt: MqttOptions = MqttOptions()) -> list[dict]:
+    """Bir hattın, belirtilen edge'e atanmış makineleri için sekme (diğer edge'lerin makineleri hariç)."""
     tab = line_tab_id(line.id)
-    broker_nodes = _broker(tab, f"vmes-{line.edge_id}-line-{line.id}", f"EMQX ({line.area_slug}/{line.slug})", mqtt)
-    mqtt_out = _mqtt_out(tab, broker_nodes[-1]["id"], 60 + max(len(line.machines) - 1, 0) * 60)
+    machines = [m for m in line.machines if m.edge == edge_id]
+    broker_nodes = _broker(tab, f"vmes-{edge_id}-line-{line.id}", f"EMQX ({line.area_slug}/{line.slug})", mqtt)
+    mqtt_out = _mqtt_out(tab, broker_nodes[-1]["id"], 60 + max(len(machines) - 1, 0) * 60)
     nodes: list[dict] = [
         {
             "id": tab,
@@ -328,7 +330,7 @@ def build_line_flow(line: LineSpec, mqtt: MqttOptions = MqttOptions()) -> list[d
         *broker_nodes,
         mqtt_out,
     ]
-    for row, machine in enumerate(sorted(line.machines, key=lambda m: m.code)):
+    for row, machine in enumerate(sorted(machines, key=lambda m: m.code)):
         nodes.extend(_machine_nodes(tab, line, machine, row, mqtt_out["id"]))
     return nodes
 
@@ -392,8 +394,8 @@ def build_managed_flows(lines: list[LineSpec], edge_id: str, mqtt: MqttOptions =
     """Belirli bir edge'in yönettiği tüm sekmeler ve düğümler (yalnızca makinesi olan hatlar)."""
     nodes = build_edge_flow(edge_id, mqtt)
     for line in sorted(lines, key=lambda l: l.id):
-        if line.edge_id == edge_id and line.machines:
-            nodes.extend(build_line_flow(line, mqtt))
+        if any(m.edge == edge_id for m in line.machines):
+            nodes.extend(build_line_flow(line, edge_id, mqtt))
     return nodes
 
 

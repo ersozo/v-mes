@@ -78,7 +78,6 @@ class LineIn(BaseModel):
     area_id: int
     slug: Slug
     name: Name
-    edge_id: Slug = "edge-01"
     sort_order: int = 0
 
 
@@ -86,7 +85,6 @@ class LinePatch(BaseModel):
     area_id: int | None = None
     slug: Slug | None = None
     name: Name | None = None
-    edge_id: Slug | None = None
     sort_order: int | None = None
 
 
@@ -94,7 +92,7 @@ class LineOut(LineIn):
     id: int
 
 
-_LINE_COLS = "id, area_id, slug, name, edge_id, sort_order"
+_LINE_COLS = "id, area_id, slug, name, sort_order"
 
 
 @router.get("/lines", response_model=list[LineOut], dependencies=[Depends(any_user)])
@@ -134,6 +132,8 @@ ScrapSource = Literal["plc", "manual"]
 
 class PlcConfigIn(BaseModel):
     protocol: Literal["s7"] = "s7"
+    # PLC'yi okuyan edge (ör. makinenin HUBBOX'ı). Boşsa ve tek aktif edge varsa o atanır.
+    edge_id: int | None = None
     host: str = Field(pattern=HOST, max_length=253)
     port: int = Field(default=102, ge=1, le=65535)
     rack: int = Field(default=0, ge=0, le=7)
@@ -148,6 +148,7 @@ class PlcConfigIn(BaseModel):
 
 
 class PlcConfigOut(PlcConfigIn):
+    edge_code: str
     updated_at: UtcDatetime
     updated_by: int | None
     warnings: list[str] = []
@@ -190,6 +191,7 @@ class MachineOut(BaseModel):
     scrap_source: ScrapSource
     sort_order: int
     has_plc_config: bool
+    edge_id: int | None = None
     tag_count: int
 
 
@@ -199,7 +201,7 @@ class MachineDetail(MachineOut):
 
 _MACHINE_SELECT = """
 SELECT m.id, m.line_id, m.code, m.name, m.is_active, m.state_source, m.counter_idle_seconds, m.scrap_source, m.sort_order,
-       CAST(CASE WHEN c.machine_id IS NULL THEN 0 ELSE 1 END AS bit) AS has_plc_config,
+       CAST(CASE WHEN c.machine_id IS NULL THEN 0 ELSE 1 END AS bit) AS has_plc_config, c.edge_id,
        ISNULL((SELECT COUNT(*) FROM OPENJSON(c.tags_json)), 0) AS tag_count
 FROM dbo.machines m LEFT JOIN dbo.machine_plc_configs c ON c.machine_id = m.id
 """
@@ -215,7 +217,8 @@ def _machine(conn: pymssql.Connection, machine_id: int) -> dict:
 def _plc(conn: pymssql.Connection, machine_id: int) -> dict | None:
     row = fetch_one(
         conn,
-        "SELECT protocol, host, port, rack, slot, poll_ms, tags_json, updated_at, updated_by FROM dbo.machine_plc_configs WHERE machine_id = %s",
+        """SELECT c.protocol, c.edge_id, e.code AS edge_code, c.host, c.port, c.rack, c.slot, c.poll_ms, c.tags_json, c.updated_at, c.updated_by
+           FROM dbo.machine_plc_configs c JOIN dbo.edges e ON e.id = c.edge_id WHERE c.machine_id = %s""",
         (machine_id,),
     )
     if row is None:
@@ -231,19 +234,32 @@ def _require_roles(tags: list[TagDefinition], state_source: str, scrap_source: s
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, " ".join(errors))
 
 
+def _resolve_edge(conn: pymssql.Connection, edge_id: int | None) -> int:
+    if edge_id is not None:
+        row = fetch_one(conn, "SELECT id FROM dbo.edges WHERE id = %s", (edge_id,))
+        if row is None:
+            raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, "Seçilen edge bulunamadı")
+        return edge_id
+    active = fetch_all(conn, "SELECT id FROM dbo.edges WHERE is_active = 1")
+    if len(active) == 1:
+        return int(active[0]["id"])
+    raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT,
+                        "PLC'yi okuyacak edge'i (HUBBOX) seçin" if active else "Önce bir edge (HUBBOX) tanımlayın")
+
+
 def _save_plc(conn: pymssql.Connection, machine_id: int, cfg: PlcConfigIn, user_id: int) -> None:
     params = {
-        "m": machine_id, "protocol": cfg.protocol, "host": cfg.host, "port": cfg.port, "rack": cfg.rack,
+        "m": machine_id, "edge": _resolve_edge(conn, cfg.edge_id), "protocol": cfg.protocol, "host": cfg.host, "port": cfg.port, "rack": cfg.rack,
         "slot": cfg.slot, "poll_ms": cfg.poll_ms, "user": user_id,
         "tags": json.dumps([t.model_dump(exclude_none=True) for t in cfg.tags], ensure_ascii=False),
     }
     execute(conn, """
         MERGE dbo.machine_plc_configs AS tgt
         USING (SELECT %(m)s AS machine_id) AS src ON tgt.machine_id = src.machine_id
-        WHEN MATCHED THEN UPDATE SET protocol = %(protocol)s, host = %(host)s, port = %(port)s, rack = %(rack)s, slot = %(slot)s,
+        WHEN MATCHED THEN UPDATE SET edge_id = %(edge)s, protocol = %(protocol)s, host = %(host)s, port = %(port)s, rack = %(rack)s, slot = %(slot)s,
              poll_ms = %(poll_ms)s, tags_json = %(tags)s, updated_at = SYSUTCDATETIME(), updated_by = %(user)s
-        WHEN NOT MATCHED THEN INSERT (machine_id, protocol, host, port, rack, slot, poll_ms, tags_json, updated_by)
-             VALUES (%(m)s, %(protocol)s, %(host)s, %(port)s, %(rack)s, %(slot)s, %(poll_ms)s, %(tags)s, %(user)s);""", params)
+        WHEN NOT MATCHED THEN INSERT (machine_id, edge_id, protocol, host, port, rack, slot, poll_ms, tags_json, updated_by)
+             VALUES (%(m)s, %(edge)s, %(protocol)s, %(host)s, %(port)s, %(rack)s, %(slot)s, %(poll_ms)s, %(tags)s, %(user)s);""", params)
 
 
 @router.get("/machines", response_model=list[MachineOut], dependencies=[Depends(any_user)])

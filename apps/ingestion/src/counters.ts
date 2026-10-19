@@ -3,6 +3,8 @@
 // Kurallar (ARCHITECTURE.md §6.3):
 //   d = yeni − önceki
 //   d ≥ 0          → artış
+//   d < 0, taşma   → işaretsiz sayaç (WORD/DWORD) üst sınırdan sarıldıysa ve
+//                    (sınır − önceki + yeni) ≤ WRAP_MAX_GAP: artış = sınır − önceki + yeni
 //   d < 0          → yeni değer sıfıra yakınsa (önceki değerin yarısından küçük ve ≤ maxDelta)
 //                    sayaç sıfırlanması/taşması: artış = yeni değer;
 //                    değilse anomali (ör. PLC programı eski değerle yeniden yüklendi): artış sayılmaz
@@ -16,7 +18,17 @@ export interface CounterState {
   ts: Date;
 }
 
-export type CounterEvent = "reset" | "anomaly" | "invalid";
+export type CounterEvent = "reset" | "wrap" | "anomaly" | "invalid";
+
+/** İşaretsiz sayaç tiplerinin değer aralığı (taşma hesabı için). İşaretli DINT taşınca negatife düşer → geçersiz. */
+export const COUNTER_MODULUS: Partial<Record<string, number>> = { WORD: 65_536, DWORD: 4_294_967_296 };
+
+/**
+ * Taşma sonrası hesaplanan artış bu değeri aşarsa taşma değil sıfırlanma sayılır.
+ * (Ör. 16 bit sayaç 60.000'den 0'a düşerse: "taşma" 5.536 adet yazardı — bu bir sıfırlamadır.)
+ * Saniyede bir okumada makine başına 1.000 parça gerçekçi değildir.
+ */
+export const WRAP_MAX_GAP = 1_000;
 
 export interface Observation {
   delta: number;
@@ -58,7 +70,7 @@ export class CounterTracker {
   }
 
   /** Örneği işler; yok sayılan (eski/tekrar) örnekler için null döner. */
-  observe(machineId: number, role: CounterRole, value: number, ts: Date): Observation | null {
+  observe(machineId: number, role: CounterRole, value: number, ts: Date, modulus?: number): Observation | null {
     if (!Number.isInteger(value) || value < 0) {
       return { delta: 0, event: "invalid" };
     }
@@ -74,6 +86,8 @@ export class CounterTracker {
     let result: Observation;
     if (d >= 0) {
       result = d > this.maxDelta ? { delta: 0, event: "anomaly" } : { delta: d };
+    } else if (modulus && prev.value < modulus && modulus - prev.value + value <= WRAP_MAX_GAP) {
+      result = { delta: modulus - prev.value + value, event: "wrap" };
     } else {
       const nearZero = value <= this.maxDelta && value < prev.value / 2;
       result = nearZero ? { delta: value, event: "reset" } : { delta: 0, event: "anomaly" };

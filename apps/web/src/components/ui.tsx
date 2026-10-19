@@ -185,7 +185,7 @@ export function Empty({ title, children, icon }: { title: string; children?: Rea
   );
 }
 
-export function Dialog({ open, onClose, title, children, footer, wide }: { open: boolean; onClose: () => void; title: string; children: ReactNode; footer?: ReactNode; wide?: boolean }) {
+export function Dialog({ open, onClose, title, children, footer, wide, size }: { open: boolean; onClose: () => void; title: string; children: ReactNode; footer?: ReactNode; wide?: boolean; size?: "xl" }) {
   const ref = useRef<HTMLDialogElement>(null);
   useEffect(() => {
     const d = ref.current;
@@ -200,7 +200,7 @@ export function Dialog({ open, onClose, title, children, footer, wide }: { open:
       onClick={(e) => e.target === ref.current && onClose()}
       className={cn(
         "m-auto max-h-[90vh] w-[calc(100%-2rem)] rounded-xl border border-line bg-surface p-0 text-ink backdrop:bg-black/40",
-        wide ? "max-w-4xl" : "max-w-lg",
+        size === "xl" ? "max-w-7xl" : wide ? "max-w-4xl" : "max-w-lg",
       )}
     >
       {open && (

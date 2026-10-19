@@ -13,16 +13,15 @@ from mes_api.flows.generator import (
 )
 
 
-def machine(code: str, poll_ms: int = 1000) -> MachineSpec:
+def machine(code: str, poll_ms: int = 1000, edge: str = "edge-01") -> MachineSpec:
     return MachineSpec(
-        code=code, name=code.upper(), host="192.168.10.21", port=102, rack=0, slot=1, poll_ms=poll_ms,
+        code=code, name=code.upper(), edge=edge, host="192.168.10.21", port=102, rack=0, slot=1, poll_ms=poll_ms,
         tags=(TagSpec("total_count", "DB1,DINT0"), TagSpec("running", "DB1,X8.0")),
     )
 
 
-def line(line_id: int, *machines: MachineSpec, edge: str = "edge-01") -> LineSpec:
-    return LineSpec(id=line_id, area_slug="talasli-imalat", slug=f"hat-{line_id}", name=f"Hat {line_id}",
-                    edge_id=edge, machines=machines)
+def line(line_id: int, *machines: MachineSpec) -> LineSpec:
+    return LineSpec(id=line_id, area_slug="talasli-imalat", slug=f"hat-{line_id}", name=f"Hat {line_id}", machines=machines)
 
 
 def by_type(nodes, t):
@@ -77,9 +76,21 @@ def test_mqtt_credentials_come_from_env():
 
 
 def test_other_edges_and_empty_lines_are_excluded():
-    lines = [line(1, machine("cnc-01")), line(2, machine("cnc-02"), edge="edge-02"), line(3)]
+    lines = [line(1, machine("cnc-01")), line(2, machine("cnc-02", edge="edge-02")), line(3)]
     tabs = {n["id"] for n in by_type(build_managed_flows(lines, "edge-01"), "tab")}
     assert tabs == {edge_tab_id("edge-01"), line_tab_id(1)}
+
+
+def test_one_gateway_per_machine_same_line():
+    # Aynı hattaki iki makine, her biri kendi HUBBOX'ında: her edge yalnızca kendi makinesini okur
+    l = line(1, machine("m-01", edge="hubbox-01"), machine("m-02", edge="hubbox-02"))
+    e1 = build_managed_flows([l], "hubbox-01")
+    e2 = build_managed_flows([l], "hubbox-02")
+    assert [n["name"].split(" @")[0] for n in by_type(e1, "s7 endpoint")] == ["m-01"]
+    assert [n["name"].split(" @")[0] for n in by_type(e2, "s7 endpoint")] == ["m-02"]
+    assert "factory/_edge/hubbox-02/heartbeat" in json.dumps(e2) and "hubbox-01" not in json.dumps(e2)
+    # Aynı PLC adresi (her HUBBOX'ın kendi izole ağı) sorun değil
+    assert by_type(e1, "s7 endpoint")[0]["address"] == by_type(e2, "s7 endpoint")[0]["address"]
 
 
 def test_merge_keeps_user_flows_and_diff_detects_changes():

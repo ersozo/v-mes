@@ -85,7 +85,6 @@ services:
       NODERED_ADMIN_USER: ${NODERED_ADMIN_USER:-admin}
       NODERED_ADMIN_PASSWORD: ${NODERED_ADMIN_PASSWORD:?NODERED_ADMIN_PASSWORD gerekli}
       NODERED_CREDENTIAL_SECRET: ${NODERED_CREDENTIAL_SECRET:?NODERED_CREDENTIAL_SECRET gerekli}
-      EDGE_ID: ${EDGE_ID:-edge-01}
       MQTT_HOST: emqx
       MQTT_USER: ${MQTT_NODERED_USER:-nodered}
       MQTT_PASSWORD: ${MQTT_NODERED_PASSWORD}
@@ -150,11 +149,9 @@ services:
       CORS_ORIGIN: ${CORS_ORIGIN:-}
       ADMIN_USERNAME: ${ADMIN_USERNAME:-}
       ADMIN_PASSWORD: ${ADMIN_PASSWORD:-}
-      # Edge Node-RED: geliştirmede compose'daki konteyner; sahada HUBBOX içindeki Node-RED
-      NODERED_URL: ${EDGE_NODERED_URL:-http://nodered:1880}
+      # Edge Node-RED'lerinin adresleri veritabanında (Edge cihazları sayfası); kimlik bilgileri tüm edge'ler için ortak
       NODERED_ADMIN_USER: ${EDGE_NODERED_USER:-${NODERED_ADMIN_USER:-admin}}
       NODERED_ADMIN_PASSWORD: ${EDGE_NODERED_PASSWORD:-${NODERED_ADMIN_PASSWORD}}
-      EDGE_ID: ${EDGE_ID:-edge-01}
       FLOW_MQTT_MODE: ${FLOW_MQTT_MODE:-env}
       FLOW_MQTT_HOST: ${FLOW_MQTT_HOST:-}
       FLOW_MQTT_PORT: ${FLOW_MQTT_PORT:-}
@@ -210,10 +207,8 @@ services:
       MSSQL_DB: ${MSSQL_DB:-MES_DB}
       MSSQL_APP_USER: ${MSSQL_APP_USER:-mes_app}
       MSSQL_APP_PASSWORD: ${MSSQL_APP_PASSWORD}
-      NODERED_URL: ${EDGE_NODERED_URL:-http://nodered:1880}
       NODERED_ADMIN_USER: ${EDGE_NODERED_USER:-${NODERED_ADMIN_USER:-admin}}
       NODERED_ADMIN_PASSWORD: ${EDGE_NODERED_PASSWORD:-${NODERED_ADMIN_PASSWORD}}
-      EDGE_ID: ${EDGE_ID:-edge-01}
       FLOW_MQTT_MODE: ${FLOW_MQTT_MODE:-env}
       FLOW_MQTT_HOST: ${FLOW_MQTT_HOST:-}
       FLOW_MQTT_PORT: ${FLOW_MQTT_PORT:-}

@@ -1,7 +1,8 @@
 // MSSQL erişimi: makine kaydı, toplu telemetri yazımı, sayaç farkları ve durum/duruş kayıtları.
 
 import sql from "mssql";
-import { tagListSchema, type TagRole } from "@vmes/contracts";
+import { parseS7Address, tagListSchema, type TagRole } from "@vmes/contracts";
+import { COUNTER_MODULUS } from "./counters.js";
 import type { Config } from "./config.js";
 import type { BucketDelta, CounterRole, StateRow } from "./counters.js";
 import type { MachineState } from "./state.js";
@@ -19,6 +20,8 @@ export interface MachineRecord {
   pollMs: number;
   /** tag adı → rol */
   tagRoles: Map<string, TagRole>;
+  /** sayaç tag adı → işaretsiz tipin değer aralığı (taşma hesabı; yalnızca WORD/DWORD) */
+  counterModulus: Map<string, number>;
 }
 
 export interface PlantSettings {
@@ -68,13 +71,14 @@ export class Store {
 
   async loadMachines(): Promise<{ machines: MachineRecord[]; invalid: { code: string; error: string }[] }> {
     const r = await this.pool.request().query(`
-      SELECT m.id, m.code, m.line_id, a.slug AS area_slug, l.slug AS line_slug, l.edge_id,
+      SELECT m.id, m.code, m.line_id, a.slug AS area_slug, l.slug AS line_slug, e.code AS edge_id,
              m.state_source, m.counter_idle_seconds, m.scrap_source,
              c.poll_ms, c.tags_json
       FROM dbo.machines m
       JOIN dbo.lines l ON l.id = m.line_id
       JOIN dbo.areas a ON a.id = l.area_id
       JOIN dbo.machine_plc_configs c ON c.machine_id = m.id
+      JOIN dbo.edges e ON e.id = c.edge_id
       WHERE m.is_active = 1`);
 
     const machines: MachineRecord[] = [];
@@ -97,6 +101,14 @@ export class Store {
         scrapSource: row.scrap_source,
         pollMs: row.poll_ms,
         tagRoles: new Map(parsed.data.map((t) => [t.name, t.role])),
+        counterModulus: new Map(
+          parsed.data.flatMap((t) => {
+            if (t.role !== "total_count" && t.role !== "scrap_count") return [];
+            const a = parseS7Address(t.address);
+            const mod = a.ok ? COUNTER_MODULUS[a.value.type] : undefined;
+            return mod ? [[t.name, mod] as [string, number]] : [];
+          }),
+        ),
       });
     }
     return { machines, invalid };

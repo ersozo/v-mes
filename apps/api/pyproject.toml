@@ -11,6 +11,9 @@ dependencies = [
     "pydantic==2.14.1",
     "argon2-cffi==25.1.0",
     "PyJWT==2.15.1",
+    "openpyxl==3.1.5",
+    "defusedxml==0.7.1",
+    "python-multipart==0.0.32",
 ]
 
 [dependency-groups]

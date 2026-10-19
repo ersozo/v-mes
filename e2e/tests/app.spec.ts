@@ -1,9 +1,9 @@
 import { expect, test } from "@playwright/test";
-import { ADMIN, apiToken, login, SIM } from "./helpers";
+import { ADMIN, apiToken, login, loginViaForm, SIM } from "./helpers";
 
 test.describe("canlı izleme", () => {
-  test("canlı panel makineleri ve canlı bağlantıyı gösterir", async ({ page }) => {
-    await login(page);
+  test("giriş formu → canlı panel makineleri ve canlı bağlantıyı gösterir", async ({ page }) => {
+    await loginViaForm(page);
     await expect(page.getByRole("heading", { name: "Canlı panel" })).toBeVisible();
     for (const name of ["CNC Torna 01", "CNC Freze 02", "Eksantrik Pres 01"]) {
       await expect(page.getByText(name, { exact: true })).toBeVisible();
@@ -22,7 +22,9 @@ test.describe("canlı izleme", () => {
     await expect(card.getByText("Çalışıyor")).toBeVisible({ timeout: 20_000 });
   });
 
-  test("makine detayında canlı tag değerleri güncellenir", async ({ page }) => {
+  test("makine detayında canlı tag değerleri güncellenir", async ({ page, request }) => {
+    // Simülatörün rastgele duruşuna denk gelmemek için makineyi çalışır duruma al
+    await request.post(`${SIM}/machines/pres-01/resume`);
     await login(page);
     await page.getByRole("link").filter({ hasText: "Eksantrik Pres 01" }).click();
     await expect(page.getByRole("heading", { name: "Eksantrik Pres 01" })).toBeVisible();
@@ -73,7 +75,40 @@ test.describe("konfigüratör", () => {
     await login(page);
     await page.goto("/configurator");
     await expect(page.getByText("Node-RED dağıtımı")).toBeVisible();
-    await expect(page.getByText(/Node-RED güncel|sekme/)).toBeVisible();
+    await expect(page.getByText(/\d+ edge · (hepsi güncel|\d+ edge'de değişiklik var)/)).toBeVisible();
+    await expect(page.getByRole("listitem").filter({ hasText: "edge-01" })).toBeVisible();
+  });
+});
+
+test.describe("edge ve içe aktarma", () => {
+  test("Edge cihazları sayfası edge'i, makinelerini ve kontrol sonucunu gösterir", async ({ page }) => {
+    await login(page);
+    await page.goto("/edges");
+    const row = page.getByRole("row").filter({ hasText: "edge-01" });
+    await expect(row).toContainText("cnc-01");
+    await expect(row.getByText("Çevrimiçi")).toBeVisible({ timeout: 20_000 });
+    await row.getByRole("button", { name: "Kontrol" }).click();
+    await expect(page.getByText("node-red-contrib-s7 3.")).toBeVisible({ timeout: 20_000 });
+    await expect(page.getByText("Uyumlu — dağıtıma hazır.")).toBeVisible();
+  });
+
+  test("TIA satırları yapıştırılıp rol atanarak tag listesine aktarılır", async ({ page }) => {
+    await login(page);
+    await page.goto("/configurator");
+    await page.getByRole("button", { name: "cnc-02" }).click();
+    await page.getByRole("button", { name: "TIA'dan içe aktar" }).click();
+    const dialog = page.getByRole("dialog");
+    await dialog.getByRole("radio", { name: "DB editöründen yapıştır" }).click();
+    await dialog.getByLabel("DB numarası").fill("200");
+    await dialog.locator("textarea").fill("MakinaIstasyonData[7]\tStruct\t952.0\nkosuBiti\tBool\t952.2\nsonsuzSayici\tUInt\t956.0");
+    await dialog.getByRole("button", { name: "Satırları oku" }).click();
+    await expect(dialog.getByText("DB200,WORD956")).toBeVisible();
+    await expect(dialog.getByText("sayaç adayı")).toBeVisible();
+    await dialog.getByRole("row").filter({ hasText: "DB200,WORD956" }).getByLabel("Rol").selectOption("process");
+    await dialog.getByRole("row").filter({ hasText: "DB200,WORD956" }).getByLabel("sonsuzSayici seç", { exact: false }).check();
+    await dialog.getByRole("button", { name: /tag'i aktar/ }).click();
+    // Tag tabloya eklendi (kaydetmeden; sayfadan ayrılınca kaybolur)
+    await expect(page.getByLabel("Adres").last()).toHaveValue("DB200,WORD956");
   });
 });
 
@@ -121,7 +156,7 @@ test.describe("yetkiler", () => {
   });
 
   test("çıkış sonrası korumalı sayfa giriş ekranına yönlendirir", async ({ page }) => {
-    await login(page, ADMIN);
+    await loginViaForm(page, ADMIN);
     await page.getByRole("button", { name: "Çıkış" }).click();
     await expect(page).toHaveURL(/\/login/);
     await page.goto("/reports");

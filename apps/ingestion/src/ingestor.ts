@@ -140,8 +140,9 @@ export class Ingestor {
 
       const role = machine.tagRoles.get(name);
       if (role && COUNTER_ROLES.has(role)) {
-        const obs = this.counters.observe(machine.id, role as CounterRole, value, ts);
-        if (obs?.event) this.log.warn({ machine: machine.code, tag: name, value, event: obs.event }, "sayaç olayı");
+        const obs = this.counters.observe(machine.id, role as CounterRole, value, ts, machine.counterModulus.get(name));
+        if (obs?.event === "wrap") this.log.info({ machine: machine.code, tag: name, value, delta: obs.delta }, "sayaç taştı (normal)");
+        else if (obs?.event) this.log.warn({ machine: machine.code, tag: name, value, event: obs.event }, "sayaç olayı");
         if (role === "total_count" && obs && obs.delta > 0) countIncreased = true;
       } else if (role === "running") {
         running = value !== 0;

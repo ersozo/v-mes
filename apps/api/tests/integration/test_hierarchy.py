@@ -16,8 +16,11 @@ def line(client, admin):
 
 
 def make_machine(client, headers, line, **overrides):
+    edge_id = next(e["id"] for e in client.get("/api/edges", headers=headers).json() if e["code"] == "edge-01")
     body = {"line_id": line["id"], "code": unique("m"), "name": "Test Makine",
             "plc": {"host": "192.168.10.21", "tags": TAGS}, **overrides}
+    if body.get("plc"):
+        body["plc"] = {"edge_id": edge_id, **body["plc"]}
     return client.post("/api/machines", headers=headers, json=body)
 
 
@@ -80,7 +83,7 @@ def test_validate_endpoint_returns_errors_and_warnings(client, admin, line):
 
 def test_put_plc_replaces_config(client, admin, line):
     m = make_machine(client, admin, line).json()
-    r = client.put(f"/api/machines/{m['id']}/plc", headers=admin, json={"host": "10.0.0.5", "poll_ms": 500, "tags": TAGS[:2]})
+    r = client.put(f"/api/machines/{m['id']}/plc", headers=admin, json={"host": "10.0.0.5", "poll_ms": 500, "edge_id": m["plc"]["edge_id"], "tags": TAGS[:2]})
     assert r.status_code == 200
     assert r.json()["host"] == "10.0.0.5" and r.json()["poll_ms"] == 500 and len(r.json()["tags"]) == 2
     assert r.json()["updated_by"] is not None

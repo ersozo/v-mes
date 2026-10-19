@@ -288,12 +288,11 @@ alias mes='docker compose -f /opt/v-mes/docker-compose.yml -f /opt/v-mes/docker-
 
 ## 8. HUBBOX bağlantısı ve ilk makine
 
-### 8.1 Ayarlar
+### 8.1 Ayarlar (tüm HUBBOX'lar için ortak)
 
 `.env` içinde:
 
 ```ini
-EDGE_NODERED_URL=http://10.146.168.19:1880
 EDGE_NODERED_USER=<HUBBOX Node-RED kullanıcısı>
 EDGE_NODERED_PASSWORD=<HUBBOX Node-RED şifresi>
 FLOW_MQTT_MODE=inline
@@ -304,19 +303,22 @@ FLOW_MQTT_PASSWORD=<MQTT_NODERED_PASSWORD ile aynı>
 
 ```bash
 mes up -d api            # yeni ayarlarla API'yi yeniden oluştur
-mes --profile tools run --rm flow-cli check
 ```
 
-`check` çıktısında hepsi ✓ olmalı. HUBBOX'tan sanal makinenin MQTT portuna erişimi ayrıca doğrulamak için HUBBOX'taki Node-RED'de geçici bir `mqtt out` düğümüyle `FLOW_MQTT_HOST:1883` adresine bağlanmayı deneyebilirsiniz (bağlandı → yeşil).
+### 8.2 HUBBOX'ı ekleyin
 
-### 8.2 İlk makine
+Arayüzde **Edge cihazları → Edge ekle**: kod (ör. `hubbox-mekanik`), ad, Node-RED adresi (`http://10.146.168.19:1880`). Ardından **Kontrol**: tüm maddeler ✓ olmalı. Geliştirmeden kalan `edge-01` kaydını silin veya pasifleştirin.
+
+HUBBOX'tan sanal makinenin MQTT portuna erişimi ayrıca doğrulamak için HUBBOX'taki Node-RED'de geçici bir `mqtt out` düğümüyle `FLOW_MQTT_HOST:1883` adresine bağlanmayı deneyebilirsiniz (bağlandı → yeşil).
+
+### 8.3 İlk makine
 
 Arayüzde **PLC konfigüratörü**:
-1. Alan → hat → makine ekleyin.
+1. Alan → hat → makine ekleyin; **edge** olarak HUBBOX'ı seçin.
 2. PLC: `192.168.10.1`, port 102, rack/slot `0/1` (S7-1500).
-3. Tag'leri girin (TIA adresleri); doğrulama yazarken çalışır.
-4. **Node-RED dağıtımı** kartında farkı gözden geçirip **Dağıt**.
-5. Canlı panelde makinenin "Çalışıyor/Duruyor" durumuna geçtiğini ve tag değerlerinin aktığını doğrulayın.
+3. Tag'ler: **TIA'dan içe aktar** → DB tablosunu (.xlsx) seçin → satırları seçip rolleri atayın (toplam sayaç, çalışıyor bit'i…).
+4. **Node-RED dağıtımı** kartında HUBBOX için farkı gözden geçirip **Dağıt**.
+5. Canlı panelde makinenin "Çalışıyor/Duruyor" durumuna geçtiğini ve tag değerlerinin aktığını doğrulayın; **Edge cihazları**nda HUBBOX "Çevrimiçi" ve saati "senkron" olmalı.
 
 ## 9. Yedekleme
 

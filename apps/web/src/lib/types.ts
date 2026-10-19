@@ -16,6 +16,7 @@ export interface Machine {
   scrap_source: ScrapSource;
   sort_order: number;
   has_plc_config: boolean;
+  edge_id: number | null;
   tag_count: number;
 }
 
@@ -28,6 +29,8 @@ export interface Tag {
 
 export interface PlcConfig {
   protocol: "s7";
+  edge_id: number | null;
+  edge_code?: string;
   host: string;
   port: number;
   rack: number;
@@ -48,8 +51,30 @@ export interface Line {
   area_id: number;
   slug: string;
   name: string;
-  edge_id: string;
   sort_order: number;
+}
+
+export interface Edge {
+  id: number;
+  code: string;
+  name: string;
+  nodered_url: string;
+  is_active: boolean;
+  notes: string | null;
+  created_at: string;
+  machine_count: number;
+  machines: string[];
+}
+
+export interface EdgeCheck {
+  edge: string;
+  url: string;
+  ok: boolean;
+  items: { status: "ok" | "warn" | "error"; text: string }[];
+  node_red_version?: string;
+  s7_version?: string;
+  tabs?: { label: string; managed: boolean }[];
+  existing_s7_endpoints?: { address: string; port: string; rack: string; slot: string; cycletime: string; variables: number }[];
 }
 
 export interface Area {
@@ -271,21 +296,49 @@ export interface UserRow {
   last_login_at: string | null;
 }
 
-export interface FlowPreview {
-  edge_id: string;
-  rev: string;
-  diff: { added: string[]; removed: string[]; changed: string[]; unchanged: string[]; has_changes: boolean };
-  warnings: string[];
+export interface FlowDiff {
+  added: string[];
+  removed: string[];
+  changed: string[];
+  unchanged: string[];
+  has_changes: boolean;
+}
+
+export interface EdgePlan {
+  edge_id: number;
+  code: string;
+  name: string;
+  url: string;
+  machine_count: number;
+  error: string | null;
+  rev: string | null;
+  diff: FlowDiff | null;
   node_count: number;
+}
+
+export interface FlowPreview {
+  edges: EdgePlan[];
+  has_changes: boolean;
+  unreachable: string[];
+  warnings: string[];
+}
+
+export interface DeployResult {
+  edge_id: number;
+  code: string;
+  status: "deployed" | "unchanged" | "failed" | "conflict";
+  error?: string;
+  rev?: string;
 }
 
 export interface Deployment {
   id: number;
   deployed_at: string;
   status: "success" | "partial" | "failed";
-  summary: { diff?: FlowPreview["diff"]; warnings?: string[] } | null;
+  summary: { diff?: FlowDiff | null; warnings?: string[] } | null;
   error: string | null;
   deployed_by: string | null;
+  edge_code: string | null;
 }
 
 export interface OperatorView {

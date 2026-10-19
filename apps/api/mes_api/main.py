@@ -14,7 +14,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from mes_api import errors, jobs
 from mes_api.db import connect, fetch_one
 from mes_api.deps import auth_settings, db_settings
-from mes_api.routers import admin, auth, definitions, flows, hierarchy, operations, reports, users
+from mes_api.routers import admin, auth, definitions, edges, flows, hierarchy, operations, plc_tools, reports, users
 from mes_api.security import hash_password, validate_password_strength
 
 log = logging.getLogger("mes_api")
@@ -63,7 +63,7 @@ if origins:
                        allow_methods=["*"], allow_headers=["*"])
 
 errors.install(app)
-for r in (auth.router, users.router, hierarchy.router, definitions.router, flows.router, operations.router, reports.router, admin.router):
+for r in (auth.router, users.router, hierarchy.router, definitions.router, flows.router, operations.router, reports.router, admin.router, edges.router, plc_tools.router):
     app.include_router(r)
 
 

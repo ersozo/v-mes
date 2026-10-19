@@ -3,7 +3,7 @@
 import pytest
 
 from mes_api.flows import nodered
-from mes_api.routers import flows as flows_router
+from mes_api.flows import service
 
 
 class FakeNodeRed:
@@ -33,36 +33,42 @@ class FakeNodeRed:
 
 @pytest.fixture(autouse=True)
 def fake_nodered(monkeypatch):
-    monkeypatch.setattr(flows_router, "NodeRedAdmin", FakeNodeRed)
-    monkeypatch.setattr(flows_router, "nodered_settings", lambda: None)
+    monkeypatch.setattr(service, "_admin", lambda edge: FakeNodeRed())
     FakeNodeRed.flows = [{"id": "user-tab", "type": "tab", "label": "Kullanıcı sekmesi"}]
     FakeNodeRed.rev = "rev-1"
     FakeNodeRed.conflict = False
 
 
+def edge01(payload):
+    return next(e for e in payload["edges"] if e["code"] == "edge-01")
+
+
 def test_preview_deploy_and_idempotency(client, admin):
     p = client.get("/api/flows/preview", headers=admin).json()
-    assert p["diff"]["has_changes"] and "mes-edge-edge-01" in p["diff"]["added"]
+    assert p["has_changes"] and "mes-edge-edge-01" in edge01(p)["diff"]["added"]
 
     d = client.post("/api/flows/deploy", headers=admin).json()
-    assert d["status"] == "deployed" and d["rev"] == "rev-2"
+    r = next(x for x in d["results"] if x["code"] == "edge-01")
+    assert r["status"] == "deployed" and r["rev"] == "rev-2"
     assert any(n["id"] == "user-tab" for n in FakeNodeRed.flows), "kullanıcı sekmesi korunmalı"
 
     again = client.post("/api/flows/deploy", headers=admin).json()
-    assert again["status"] == "unchanged"
+    assert next(x for x in again["results"] if x["code"] == "edge-01")["status"] == "unchanged"
 
-    history = client.get("/api/flows/deployments", headers=admin).json()
-    assert history[0]["status"] == "success" and history[0]["deployed_by"] == "admin"
+    edge_id = next(e["id"] for e in client.get("/api/edges", headers=admin).json() if e["code"] == "edge-01")
+    history = client.get(f"/api/flows/deployments?edge_id={edge_id}", headers=admin).json()
+    assert history[0]["status"] == "success" and history[0]["deployed_by"] == "admin" and history[0]["edge_code"] == "edge-01"
 
 
 def test_preview_can_include_flow_json(client, admin):
     p = client.get("/api/flows/preview?include_flows=true", headers=admin).json()
-    assert any(n["type"] == "s7 endpoint" for n in p["flows"])
+    assert any(n["type"] == "s7 endpoint" for n in edge01(p)["flows"])
 
 
-def test_conflict_returns_409(client, admin):
+def test_conflict_is_reported_per_edge(client, admin):
     FakeNodeRed.conflict = True
-    assert client.post("/api/flows/deploy", headers=admin).status_code == 409
+    r = client.post("/api/flows/deploy", headers=admin).json()
+    assert next(x for x in r["results"] if x["code"] == "edge-01")["status"] == "conflict"
 
 
 def test_machine_without_plc_config_is_warned(client, admin):

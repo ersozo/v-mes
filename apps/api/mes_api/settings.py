@@ -41,9 +41,10 @@ class NodeRedSettings:
     password: str | None
 
     @classmethod
-    def from_env(cls) -> NodeRedSettings:
+    def for_url(cls, url: str) -> NodeRedSettings:
+        """Edge'in adresi veritabanından; kimlik bilgileri tüm edge'ler için ortak (NODERED_ADMIN_*)."""
         return cls(
-            url=_env("NODERED_URL", "http://nodered:1880").rstrip("/"),
+            url=url.rstrip("/"),
             user=os.environ.get("NODERED_ADMIN_USER") or None,
             password=os.environ.get("NODERED_ADMIN_PASSWORD") or None,
         )
@@ -67,10 +68,6 @@ class AuthSettings:
             refresh_ttl_seconds=int(_env("REFRESH_TOKEN_TTL_SECONDS", str(7 * 24 * 3600))),
             cookie_secure=_env("COOKIE_SECURE", "false").lower() == "true",
         )
-
-
-def edge_id() -> str:
-    return _env("EDGE_ID", "edge-01")
 
 
 def flow_mqtt_options():

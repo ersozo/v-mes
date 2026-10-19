@@ -93,22 +93,28 @@ curl -X POST "localhost:8090/machines/pres-01/reset-counters"        # sayaç s�
 
 ## İlk kurulum: makine ekleme
 
-Tamamı arayüzden yapılır (**PLC konfigüratörü**, mühendis veya yönetici rolü):
+Her makinenin PLC'si, o makinedeki **edge gateway** (HUBBOX içindeki Node-RED) tarafından okunur. Tamamı arayüzden yapılır (mühendis veya yönetici rolü).
 
-1. **Alan ve hat** ekleyin. Kısa adlar (ör. `talasli-imalat`, `hat-1`) MQTT topic yolunda kullanılır.
-2. Hattın yanındaki **+** ile **makine** ekleyin:
-   - **Makine kodu** (ör. `cnc-03`) UNS kimliğidir; sonradan değiştirilemez.
-   - **Çalışma durumu kaynağı:** PLC'de çalışıyor bit'i/durum kodu varsa *PLC durum tag'i*, yoksa *sayaç hareketinden* (eşik süresiyle).
-   - **Hurda kaynağı:** PLC'de hurda sayacı varsa *PLC*, yoksa *operatör girişi*.
-3. **PLC bağlantısı:** IP, port (102), rack/slot (S7-1200/1500 için 0/1), okuma periyodu.
-4. **Tag'ler:** ad, adres (`DB1,DINT0`, `DB1,X8.0`, `DB1,REAL12` …) ve rol. Hatalar yazarken gösterilir.
-   - `total_count` zorunludur; sayaçlar DINT/DWORD/WORD olmalıdır.
-5. Üstteki **Node-RED dağıtımı** kartından değişiklikleri gözden geçirip **Dağıt**'a basın. Yalnızca değişen hatlar yeniden başlatılır.
-6. **Tanımlar → Ürünler:** her ürün için makine bazında **ideal çevrim süresini** girin. Performans ve OEE bu olmadan hesaplanamaz.
-7. **Tanımlar → Vardiyalar:** vardiya saatleri ve molalar (planlı süre bunlardan hesaplanır).
+| Adım | Kim | Ne |
+|---|---|---|
+| 1 | Otomasyon / saha | HUBBOX'ı hazırlar: Node-RED + `node-red-contrib-s7` (3.x), NTP, ortak Node-RED kullanıcı/şifresi. PLC'de PUT/GET açık, okunacak DB optimize edilmemiş. |
+| 2 | IT | Sunucu → HUBBOX `:1880` ve HUBBOX → sunucu `:1883` erişimi |
+| 3 | **Edge cihazları** | **Edge ekle**: kod (ör. `hubbox-mekanik`), ad, Node-RED adresi → **Kontrol** ile uyumluluğu doğrula |
+| 4 | **PLC konfigüratörü** | Alan → hat → **makine** ekle; **edge**'i seç; PLC adresi (her HUBBOX'ın kendi izole ağı olduğu için hepsinde `192.168.10.1` olabilir), port 102, rack/slot `0/1` (S7-1200/1500) |
+| 5 | Tag'ler | **TIA'dan içe aktar** (DB tablosu .xlsx/.csv veya DB editöründen yapıştır) → satırları seç, ad ve rol ata. Aynı tip makinelerde **Başka makineden kopyala**. |
+| 6 | Dağıtım | **Node-RED dağıtımı** kartında yalnızca değişen edge'ler listelenir → **Dağıt** |
+| 7 | Doğrulama | Canlı panelde makine durumu ve tag değerleri; **Tanımlar → Ürünler**'de bu makinenin ideal çevrim süreleri; **Vardiyalar** |
+
+**Makine ayarları**
+- **Makine kodu** (ör. `mekanik-01`) UNS kimliğidir; sonradan değiştirilemez.
+- **Çalışma durumu kaynağı:** PLC'de çalışıyor bit'i/durum kodu varsa *PLC durum tag'i*, yoksa *sayaç hareketinden* (eşik süresiyle).
+- **Hurda kaynağı:** PLC'de hurda sayacı varsa *PLC*, yoksa *operatör girişi*.
+- `total_count` rolü zorunludur; sayaçlar DINT/DWORD/WORD olmalıdır. 16 bit (UInt/WORD) sayaçların 65.535 → 0 taşması kayıpsız hesaplanır.
+
+**İçe aktarma** TIA tablosundaki sütunları içeriğe göre tanır (ad, veri tipi, `892.1` biçiminde ofset); struct/dizi satırlarını ad öneki yapar (`MakinaIstasyonData[2].kosuBiti` → `DB200,X902.2`). Tipi boş bırakılmış bit satırları Bool varsayılır ve işaretlenir. String, LReal, 64 bit, Time/DTL tipleri şimdilik okunmaz.
 
 **PLC tarafı (TIA Portal, S7-1200/1500):**
-- Okunacak DB'lerin özelliklerinde **"Optimized block access" kapalı** olmalı (mutlak adresleme).
+- Okunacak DB'lerin özelliklerinde **"Optimized block access" kapalı** olmalı (DB editöründe "Offset" sütunu görünür).
 - CPU → Protection & Security → **"Permit access with PUT/GET communication" açık** olmalı.
 - PLC'ye yazma yapılmaz; sistem salt okunurdur.
 
@@ -176,25 +182,18 @@ PLC ──S7/102──► HUBBOX (Node-RED) ──MQTT 1883/8883──► Sanal 
 - HUBBOX saati **NTP ile senkron** olmalı: zaman damgaları edge'de atanır. Ingestion kaymayı heartbeat'lerden ölçer; 30 sn'yi aşarsa arayüzün sol alt köşesinde uyarı görünür.
 - Güvenlik: HUBBOX güvenlik duvarında PLC'nin 102 portunu yalnızca HUBBOX'ın kendisine açık bırakın.
 
-**`.env` ayarları**
+**`.env` ayarları** (tüm edge'ler için ortak)
 
 ```ini
-EDGE_NODERED_URL=http://10.146.168.19:1880
 EDGE_NODERED_USER=...            # HUBBOX Node-RED kullanıcı adı (adminAuth kapalıysa boş)
 EDGE_NODERED_PASSWORD=...
 FLOW_MQTT_MODE=inline            # HUBBOX konteynerinin ortam değişkenlerini yönetmiyoruz
-FLOW_MQTT_HOST=10.146.x.x        # sanal makinenin kurumsal IP'si (HUBBOX'tan erişilebilir olmalı)
+FLOW_MQTT_HOST=10.146.x.x        # sunucunun kurumsal IP'si (HUBBOX'lardan erişilebilir olmalı)
 FLOW_MQTT_USER=nodered           # = MQTT_NODERED_USER
 FLOW_MQTT_PASSWORD=...           # = MQTT_NODERED_PASSWORD
 ```
 
-**Kontrol (salt okunur):**
-
-```bash
-docker compose --profile tools run --rm flow-cli check
-```
-
-Node-RED'e erişimi, kimlik doğrulamayı, Node-RED ve `node-red-contrib-s7` sürümlerini, mevcut sekmeleri/S7 bağlantılarını ve akışların hangi MQTT adresine bağlanacağını gösterir. Ardından arayüzden (PLC konfigüratörü → Dağıt) veya `make flows-preview` / `make flows-deploy` ile dağıtın.
+Edge adresleri arayüzde **Edge cihazları** sayfasından eklenir. **Kontrol** (veya `docker compose --profile tools run --rm flow-cli check`) her edge için Node-RED erişimini, kimlik doğrulamayı, Node-RED ve `node-red-contrib-s7` sürümlerini, mevcut sekmeleri/S7 bağlantılarını ve akışların hangi MQTT adresine bağlanacağını gösterir (salt okunur). Dağıtım her edge'e ayrı yapılır; erişilemeyen bir edge diğerlerini engellemez.
 
 ## İşletim
 

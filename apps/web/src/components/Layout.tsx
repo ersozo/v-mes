@@ -1,4 +1,4 @@
-import { BarChart3, ClipboardList, Cpu, Factory, LogOut, Monitor, Moon, Settings2, Sun, SunMoon, Tablet, Users } from "lucide-react";
+import { BarChart3, ClipboardList, Cpu, Factory, LogOut, Monitor, Moon, Router, Settings2, Sun, SunMoon, Tablet, Users } from "lucide-react";
 import { useState } from "react";
 import { NavLink, Outlet, useNavigate } from "react-router";
 import { logout } from "../lib/api";
@@ -13,6 +13,7 @@ const NAV = [
   { to: "/orders", label: "İş emirleri", icon: ClipboardList, need: null },
   { to: "/operator", label: "Operatör ekranı", icon: Tablet, need: "operate" },
   { to: "/configurator", label: "PLC konfigüratörü", icon: Cpu, need: "configure" },
+  { to: "/edges", label: "Edge cihazları", icon: Router, need: "configure" },
   { to: "/definitions", label: "Tanımlar", icon: Settings2, need: "configure" },
   { to: "/users", label: "Kullanıcılar", icon: Users, need: "admin" },
 ] as const;

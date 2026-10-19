@@ -1,11 +1,12 @@
 // PLC konfigüratörü (Zero-Code): hiyerarşi ağacı, makine + tag düzenleme (anlık doğrulama), Node-RED önizleme/deploy.
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { AlertTriangle, CheckCircle2, ChevronRight, Cpu, Factory, History, Plus, Rocket, Rows3, Trash2 } from "lucide-react";
+import { AlertTriangle, CheckCircle2, ChevronRight, Copy, Cpu, Factory, FileSpreadsheet, History, Plus, Rocket, Rows3, Trash2 } from "lucide-react";
+import { ImportTagsDialog } from "../components/ImportTags";
 import { useEffect, useState } from "react";
 import { Badge, Button, Card, Checkbox, Dialog, Empty, ErrorBox, Field, Input, PageHeader, Select, Spinner, Table, cn } from "../components/ui";
 import { api } from "../lib/api";
 import { dateTime } from "../lib/format";
-import type { Deployment, FlowPreview, HierarchyArea, Line, MachineDetail, PlcConfig, Tag, TagRole } from "../lib/types";
+import type { DeployResult, Deployment, Edge, FlowPreview, HierarchyArea, Line, MachineDetail, PlcConfig, Tag, TagRole } from "../lib/types";
 import { useUrlState } from "../lib/url-state";
 
 type Sel = { kind: "area" | "line" | "machine"; id: number | null; parent?: number };
@@ -175,7 +176,7 @@ function AreaForm({ id, data, onSaved, onDeleted }: { id: number | null; data: H
 
 function LineForm({ id, areaId, data, onSaved, onDeleted }: { id: number | null; areaId?: number; data: HierarchyArea[]; onSaved: (id: number) => void; onDeleted: () => void }) {
   const line: Line | undefined = data.flatMap((a) => a.lines).find((l) => l.id === id);
-  const [form, setForm] = useState({ area_id: line?.area_id ?? areaId ?? data[0]?.id ?? 0, slug: line?.slug ?? "", name: line?.name ?? "", edge_id: line?.edge_id ?? "edge-01", sort_order: line?.sort_order ?? 0 });
+  const [form, setForm] = useState({ area_id: line?.area_id ?? areaId ?? data[0]?.id ?? 0, slug: line?.slug ?? "", name: line?.name ?? "", sort_order: line?.sort_order ?? 0 });
   const save = useSave("/api/lines", id, onSaved);
   const del = useDelete(`/api/lines/${id}`, onDeleted);
   return (
@@ -189,13 +190,12 @@ function LineForm({ id, areaId, data, onSaved, onDeleted }: { id: number | null;
         )}</Field>
         <Field label="Ad">{(fid) => <Input id={fid} value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} />}</Field>
         <Field label="Kısa ad (UNS)" hint="küçük harf, rakam, tire">{(fid) => <Input id={fid} value={form.slug} onChange={(e) => setForm({ ...form, slug: e.target.value })} />}</Field>
-        <Field label="Edge (Node-RED)" hint="Bu hattı sorgulayan Node-RED örneği">{(fid) => <Input id={fid} value={form.edge_id} onChange={(e) => setForm({ ...form, edge_id: e.target.value })} />}</Field>
       </div>
     </FormCard>
   );
 }
 
-const emptyPlc: PlcConfig = { protocol: "s7", host: "", port: 102, rack: 0, slot: 1, poll_ms: 1000, tags: [{ name: "total_count", address: "DB1,DINT0", role: "total_count", unit: "pcs" }] };
+const emptyPlc: PlcConfig = { protocol: "s7", edge_id: null, host: "", port: 102, rack: 0, slot: 1, poll_ms: 1000, tags: [{ name: "total_count", address: "DB1,DINT0", role: "total_count", unit: "pcs" }] };
 
 interface Validation {
   valid: boolean;
@@ -206,6 +206,9 @@ interface Validation {
 function MachineForm({ id, lineId, data, onSaved, onDeleted }: { id: number | null; lineId?: number; data: HierarchyArea[]; onSaved: (id: number) => void; onDeleted: () => void }) {
   const qc = useQueryClient();
   const detail = useQuery({ queryKey: ["machine", id], queryFn: () => api<MachineDetail>(`/api/machines/${id}`), enabled: id !== null });
+  const edges = useQuery({ queryKey: ["edges"], queryFn: () => api<Edge[]>("/api/edges") });
+  const [copyOpen, setCopyOpen] = useState(false);
+  const [importOpen, setImportOpen] = useState(false);
   const lines = data.flatMap((a) => a.lines.map((l) => ({ ...l, areaName: a.name })));
   const [m, setM] = useState({ line_id: lineId ?? lines[0]?.id ?? 0, code: "", name: "", is_active: true, state_source: "tag" as "tag" | "counter", counter_idle_seconds: 120, scrap_source: "manual" as "plc" | "manual" });
   const [plc, setPlc] = useState<PlcConfig>(emptyPlc);
@@ -218,6 +221,12 @@ function MachineForm({ id, lineId, data, onSaved, onDeleted }: { id: number | nu
     setM({ line_id: d.line_id, code: d.code, name: d.name, is_active: d.is_active, state_source: d.state_source, counter_idle_seconds: d.counter_idle_seconds, scrap_source: d.scrap_source });
     setPlc(d.plc ?? emptyPlc);
   }, [detail.data]);
+
+  // Tek aktif edge varsa yeni makinede onu öner
+  useEffect(() => {
+    const active = (edges.data ?? []).filter((e) => e.is_active);
+    if (plc.edge_id === null && active.length === 1) setPlc((p) => ({ ...p, edge_id: active[0]!.id }));
+  }, [edges.data, plc.edge_id]);
 
   // Anlık doğrulama (kaydetmeden): 400 ms bekleyip API'ye sor. Yeni makinede id yok → yalnızca kayıtta doğrulanır.
   useEffect(() => {
@@ -289,6 +298,16 @@ function MachineForm({ id, lineId, data, onSaved, onDeleted }: { id: number | nu
       <div className="border-t border-line pt-4">
         <h3 className="mb-1 font-semibold">PLC bağlantısı (Siemens S7)</h3>
         <p className="mb-3 text-[12px] text-muted">S7-1200/1500: rack 0, slot 1. Okunan DB'lerde "Optimized block access" kapalı ve CPU'da PUT/GET erişimi açık olmalı.</p>
+        <div className="mb-4 max-w-md">
+          <Field label="Edge (PLC'yi okuyan gateway)" hint="PLC adresi, bu edge'in kendi makine ağına göredir (ör. her HUBBOX'ta 192.168.10.1 olabilir)">
+            {(fid) => (
+              <Select id={fid} value={plc.edge_id ?? ""} onChange={(e) => setPlc({ ...plc, edge_id: e.target.value ? Number(e.target.value) : null })}>
+                <option value="">Edge seçin…</option>
+                {(edges.data ?? []).map((e) => <option key={e.id} value={e.id} disabled={!e.is_active}>{e.name} ({e.code}){e.is_active ? "" : " — pasif"}</option>)}
+              </Select>
+            )}
+          </Field>
+        </div>
         <div className="grid grid-cols-2 gap-4 sm:grid-cols-5">
           <div className="col-span-2">
             <Field label="IP / host">{(fid) => <Input id={fid} value={plc.host} placeholder="192.168.10.21" onChange={(e) => setPlc({ ...plc, host: e.target.value })} />}</Field>
@@ -350,9 +369,21 @@ function MachineForm({ id, lineId, data, onSaved, onDeleted }: { id: number | nu
             })}
           </tbody>
         </Table>
-        <Button size="sm" variant="ghost" className="mt-2" icon={<Plus className="size-4" />} onClick={() => setPlc({ ...plc, tags: [...plc.tags, { name: "", address: "", role: "process", unit: null }] })}>
-          Tag ekle
-        </Button>
+        <div className="mt-2 flex flex-wrap gap-2">
+          <Button size="sm" variant="ghost" icon={<Plus className="size-4" />} onClick={() => setPlc({ ...plc, tags: [...plc.tags, { name: "", address: "", role: "process", unit: null }] })}>
+            Tag ekle
+          </Button>
+          <Button size="sm" variant="ghost" icon={<FileSpreadsheet className="size-4" />} onClick={() => setImportOpen(true)}>
+            TIA'dan içe aktar
+          </Button>
+          <Button size="sm" variant="ghost" icon={<Copy className="size-4" />} onClick={() => setCopyOpen(true)}>
+            Başka makineden kopyala
+          </Button>
+        </div>
+        <ImportTagsDialog open={importOpen} onClose={() => setImportOpen(false)} existing={plc.tags}
+          onImport={(tags, mode) => setPlc({ ...plc, tags: mode === "replace" ? tags : [...plc.tags.filter((t) => t.name || t.address), ...tags] })} />
+        <CopyTagsDialog open={copyOpen} onClose={() => setCopyOpen(false)} excludeId={id} data={data}
+          onPick={(src) => { setPlc({ ...plc, tags: src.tags, port: src.port, rack: src.rack, slot: src.slot, poll_ms: src.poll_ms, host: plc.host || src.host }); setCopyOpen(false); }} />
         {(generalErrors.length > 0 || (validation?.warnings.length ?? 0) > 0) && (
           <ul className="mt-3 space-y-1 text-[13px]">
             {generalErrors.map((e, i) => <li key={i} className="flex gap-2 text-danger"><AlertTriangle className="mt-0.5 size-4 shrink-0" />{e.msg}</li>)}
@@ -364,20 +395,46 @@ function MachineForm({ id, lineId, data, onSaved, onDeleted }: { id: number | nu
   );
 }
 
+function CopyTagsDialog({ open, onClose, excludeId, data, onPick }: { open: boolean; onClose: () => void; excludeId: number | null; data: HierarchyArea[]; onPick: (plc: PlcConfig) => void }) {
+  const machines = data.flatMap((a) => a.lines.flatMap((l) => l.machines.map((m) => ({ ...m, where: `${a.name} / ${l.name}` })))).filter((m) => m.has_plc_config && m.id !== excludeId);
+  const [sourceId, setSourceId] = useState<number | null>(null);
+  const src = useQuery({ queryKey: ["machine", sourceId], enabled: open && sourceId !== null, queryFn: () => api<MachineDetail>(`/api/machines/${sourceId}`) });
+  return (
+    <Dialog open={open} onClose={onClose} title="Tag'leri başka makineden kopyala" wide
+      footer={<><Button variant="ghost" onClick={onClose}>Vazgeç</Button><Button variant="primary" disabled={!src.data?.plc} onClick={() => src.data?.plc && onPick(src.data.plc)}>Kopyala</Button></>}>
+      <p className="mb-3 text-ink-2">Aynı PLC programını kullanan makineler için: tag listesi ve bağlantı ayarları (port, rack/slot, periyot) kopyalanır; mevcut tag listesinin yerine geçer. Kaydetmeden önce gözden geçirin.</p>
+      <Select aria-label="Kaynak makine" value={sourceId ?? ""} onChange={(e) => setSourceId(Number(e.target.value) || null)}>
+        <option value="">Kaynak makine seçin…</option>
+        {machines.map((m) => <option key={m.id} value={m.id}>{m.name} ({m.code}) — {m.where}, {m.tag_count} tag</option>)}
+      </Select>
+      {src.data?.plc && (
+        <div className="mt-3 max-h-72 overflow-y-auto">
+          <Table>
+            <thead><tr><th>Ad</th><th>Adres</th><th>Rol</th></tr></thead>
+            <tbody>{src.data.plc.tags.map((t) => <tr key={t.name}><td>{t.name}</td><td className="font-mono">{t.address}</td><td>{ROLE_LABEL[t.role]}</td></tr>)}</tbody>
+          </Table>
+        </div>
+      )}
+    </Dialog>
+  );
+}
+
 function DeployPanel() {
   const qc = useQueryClient();
   const [historyOpen, setHistoryOpen] = useState(false);
   const preview = useQuery({ queryKey: ["flows-preview"], queryFn: () => api<FlowPreview>("/api/flows/preview"), refetchOnWindowFocus: true });
-  const history = useQuery({ queryKey: ["deployments"], queryFn: () => api<Deployment[]>("/api/flows/deployments?limit=30"), enabled: historyOpen });
+  const history = useQuery({ queryKey: ["deployments"], queryFn: () => api<Deployment[]>("/api/flows/deployments?limit=50"), enabled: historyOpen });
   const deploy = useMutation({
-    mutationFn: () => api<{ status: string }>("/api/flows/deploy", { method: "POST" }),
+    mutationFn: (edgeId?: number) => api<{ results: DeployResult[] }>(`/api/flows/deploy${edgeId ? `?edge_id=${edgeId}` : ""}`, { method: "POST" }),
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: ["flows-preview"] });
       void qc.invalidateQueries({ queryKey: ["deployments"] });
     },
   });
-  const d = preview.data?.diff;
-  const label = (tab: string) => tab.replace("mes-line-", "hat #").replace("mes-edge-", "edge ");
+  const label = (tab: string) => tab.replace("mes-line-", "hat #").replace(/^mes-edge-.*/, "heartbeat");
+  const edges = preview.data?.edges ?? [];
+  const changed = edges.filter((e) => e.diff?.has_changes).length;
+  const resultFor = (code: string) => deploy.data?.results.find((r) => r.code === code);
 
   return (
     <Card className="p-4">
@@ -385,39 +442,68 @@ function DeployPanel() {
         <div className="flex items-center gap-3">
           <Rocket className="size-5 text-accent" aria-hidden />
           <div>
-            <div className="font-semibold">Node-RED dağıtımı {preview.data && <span className="font-normal text-muted">· {preview.data.edge_id}</span>}</div>
+            <div className="font-semibold">Node-RED dağıtımı</div>
             <div className="text-[13px] text-ink-2">
-              {preview.isLoading ? "Kontrol ediliyor…" : preview.error ? "Node-RED'e ulaşılamadı" : d?.has_changes
-                ? [d.added.length && `${d.added.length} yeni`, d.changed.length && `${d.changed.length} değişen`, d.removed.length && `${d.removed.length} kaldırılacak`].filter(Boolean).join(" · ") + " sekme — yalnızca bunlar yeniden başlatılır"
-                : "Node-RED güncel"}
+              {preview.isLoading ? "Edge'ler kontrol ediliyor…" : preview.error ? "Önizleme alınamadı"
+                : `${edges.length} edge · ${changed ? `${changed} edge'de değişiklik var` : "hepsi güncel"}${preview.data?.unreachable.length ? ` · ${preview.data.unreachable.length} erişilemiyor` : ""}`}
             </div>
           </div>
         </div>
         <div className="flex gap-2">
           <Button variant="ghost" icon={<History className="size-4" />} onClick={() => setHistoryOpen(true)}>Geçmiş</Button>
-          <Button variant="primary" icon={<Rocket className="size-4" />} disabled={!d?.has_changes} loading={deploy.isPending} onClick={() => deploy.mutate()}>Dağıt</Button>
+          <Button variant="primary" icon={<Rocket className="size-4" />} disabled={!changed} loading={deploy.isPending && deploy.variables === undefined} onClick={() => deploy.mutate(undefined)}>
+            Tümünü dağıt
+          </Button>
         </div>
       </div>
-      {d?.has_changes && (
-        <div className="mt-3 flex flex-wrap gap-1.5">
-          {d.added.map((t) => <Badge key={t} tone="good">+ {label(t)}</Badge>)}
-          {d.changed.map((t) => <Badge key={t} tone="warning">~ {label(t)}</Badge>)}
-          {d.removed.map((t) => <Badge key={t} tone="critical">− {label(t)}</Badge>)}
-        </div>
+      {edges.length > 0 && (
+        <ul className="mt-3 divide-y divide-line rounded-lg border border-line">
+          {edges.map((e) => {
+            const r = resultFor(e.code);
+            return (
+              <li key={e.edge_id} className="flex flex-wrap items-center gap-x-3 gap-y-1.5 px-3 py-2 text-[13px]">
+                <span className="font-mono font-medium">{e.code}</span>
+                <span className="text-muted">{e.machine_count} makine</span>
+                {e.error ? (
+                  <Badge tone="critical"><AlertTriangle className="size-3.5" /> erişilemiyor</Badge>
+                ) : e.diff?.has_changes ? (
+                  <span className="flex flex-wrap gap-1">
+                    {e.diff.added.map((t) => <Badge key={t} tone="good">+ {label(t)}</Badge>)}
+                    {e.diff.changed.map((t) => <Badge key={t} tone="warning">~ {label(t)}</Badge>)}
+                    {e.diff.removed.map((t) => <Badge key={t} tone="critical">− {label(t)}</Badge>)}
+                  </span>
+                ) : (
+                  <Badge tone="good"><CheckCircle2 className="size-3.5" /> güncel</Badge>
+                )}
+                {r && (
+                  <span className={r.status === "deployed" ? "text-success" : r.status === "unchanged" ? "text-muted" : "text-danger"}>
+                    {{ deployed: "dağıtıldı", unchanged: "değişiklik yoktu", failed: `başarısız: ${r.error ?? ""}`, conflict: "çakışma — yenileyip tekrar deneyin" }[r.status]}
+                  </span>
+                )}
+                <span className="ml-auto">
+                  <Button size="sm" disabled={!e.diff?.has_changes} loading={deploy.isPending && deploy.variables === e.edge_id} onClick={() => deploy.mutate(e.edge_id)}>
+                    Dağıt
+                  </Button>
+                </span>
+                {e.error && <span className="basis-full text-[12px] text-danger">{e.error}</span>}
+              </li>
+            );
+          })}
+        </ul>
       )}
       {preview.data?.warnings.map((w) => (
         <p key={w} className="mt-2 flex gap-2 text-[13px] text-ink-2"><AlertTriangle className="mt-0.5 size-4 shrink-0 text-[var(--status-warning)]" />{w}</p>
       ))}
       {(deploy.error || preview.error) && <div className="mt-3"><ErrorBox error={deploy.error || preview.error} /></div>}
-      {deploy.data && <p className="mt-2 text-[13px] text-success" role="status">{deploy.data.status === "deployed" ? "Dağıtım tamamlandı." : "Değişiklik yoktu."}</p>}
 
       <Dialog open={historyOpen} onClose={() => setHistoryOpen(false)} title="Dağıtım geçmişi" wide>
         <Table>
-          <thead><tr><th>Zaman</th><th>Kullanıcı</th><th>Sonuç</th><th>Değişiklik</th></tr></thead>
+          <thead><tr><th>Zaman</th><th>Edge</th><th>Kullanıcı</th><th>Sonuç</th><th>Değişiklik</th></tr></thead>
           <tbody>
             {(history.data ?? []).map((h) => (
               <tr key={h.id}>
                 <td className="tabular">{dateTime(h.deployed_at)}</td>
+                <td className="font-mono">{h.edge_code ?? "—"}</td>
                 <td>{h.deployed_by ?? "—"}</td>
                 <td><Badge tone={h.status === "success" ? "good" : "critical"}>{h.status === "success" ? "Başarılı" : "Başarısız"}</Badge></td>
                 <td className="text-ink-2">{h.error ?? [...(h.summary?.diff?.added ?? []), ...(h.summary?.diff?.changed ?? []), ...(h.summary?.diff?.removed ?? [])].map(label).join(", ")}</td>
