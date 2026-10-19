@@ -15,6 +15,8 @@ import { StateEngine, type EngineEvent, type MachineProfile } from "./state.js";
 import type { MachineRecord, Store, TelemetryRow } from "./store.js";
 
 const COUNTER_ROLES: ReadonlySet<string> = new Set(["total_count", "scrap_count"]);
+/** Edge saati sunucudan bu kadar saparsa uyarı verilir (zaman damgaları edge'de atanır). */
+const CLOCK_SKEW_WARN_MS = 30_000;
 
 export interface IngestStats {
   received: number;
@@ -25,6 +27,7 @@ export interface IngestStats {
   lastFlushAt: string | null;
   lastFlushError: string | null;
   pendingDbOps: number;
+  edgeClockSkewSeconds: Record<string, number>;
 }
 
 export class Ingestor {
@@ -39,6 +42,8 @@ export class Ingestor {
   private lastFlushAt: Date | null = null;
   private lastFlushError: string | null = null;
   private realtime: Realtime | null = null;
+  /** edge_id → sunucu saati − edge saati (ms; pozitif = edge geride). Heartbeat'lerden, kayan ortalama. */
+  private readonly clockSkew = new Map<string, number>();
 
   private constructor(
     private readonly cfg: Config,
@@ -94,6 +99,7 @@ export class Ingestor {
     if (parsedTopic.kind === "heartbeat") {
       const hb = heartbeatPayloadSchema.safeParse(json);
       if (!hb.success || hb.data.edge_id !== parsedTopic.edgeId) return this.reject(topic, raw, "geçersiz heartbeat");
+      this.trackClock(hb.data.edge_id, now - new Date(hb.data.ts).getTime());
       return this.handleEvents(this.engine.onHeartbeat(hb.data.edge_id, now));
     }
 
@@ -151,6 +157,23 @@ export class Ingestor {
     this.handleEvents(this.engine.onTelemetry(machine.id, ts, { running, countIncreased }, now));
 
     if (this.buffer.length >= this.cfg.FLUSH_MAX_ROWS) void this.flush();
+  }
+
+  /**
+   * Heartbeat'ten edge saat kaymasını izler (ağ gecikmesi ihmal edilebilir). Eşik aşılınca/geri dönünce
+   * log ve canlı "edge_clock" olayı üretir. Kayma, zaman damgalarını (duruş başlangıcı, dakika kovaları)
+   * doğrudan bozduğu için görünür olmalıdır.
+   */
+  private trackClock(edgeId: string, sampleMs: number): void {
+    const prev = this.clockSkew.get(edgeId);
+    const skew = prev === undefined ? sampleMs : prev * 0.8 + sampleMs * 0.2;
+    this.clockSkew.set(edgeId, skew);
+    const wasBad = prev !== undefined && Math.abs(prev) > CLOCK_SKEW_WARN_MS;
+    const isBad = Math.abs(skew) > CLOCK_SKEW_WARN_MS;
+    if (isBad !== wasBad || prev === undefined) {
+      if (isBad) this.log.warn({ edge: edgeId, skewSeconds: Math.round(skew / 1000) }, "edge saati sunucudan sapmış (NTP kontrol edin)");
+      this.realtime?.emit("edge_clock", null, { edge_id: edgeId, skew_seconds: Math.round(skew / 1000), ok: !isBad });
+    }
   }
 
   tick(now = Date.now()): void {
@@ -273,6 +296,7 @@ export class Ingestor {
   getStats(): IngestStats {
     return {
       ...this.stats,
+      edgeClockSkewSeconds: Object.fromEntries([...this.clockSkew].map(([k, v]) => [k, Math.round(v / 1000)])),
       bufferedRows: this.buffer.length,
       lastFlushAt: this.lastFlushAt?.toISOString() ?? null,
       lastFlushError: this.lastFlushError,
@@ -295,7 +319,10 @@ export class Ingestor {
           downtime_start: s.downtimeStart?.toISOString() ?? null,
         }];
       }),
-      edges: this.engine.edgeStatus().map((e) => ({ edge_id: e.edgeId, online: e.online })),
+      edges: this.engine.edgeStatus().map((e) => {
+        const skew = this.clockSkew.get(e.edgeId);
+        return { edge_id: e.edgeId, online: e.online, skew_seconds: skew === undefined ? null : Math.round(skew / 1000) };
+      }),
     };
   }
 }

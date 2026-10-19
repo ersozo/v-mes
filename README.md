@@ -159,9 +159,41 @@ docker compose run --rm db-migrate
 
 Ardından arayüzden makineleri tanımlayıp Node-RED'e dağıtın.
 
-### Edge'i ayrı bir makinede çalıştırma
+### Edge: HUBBOX içindeki Node-RED
 
-Node-RED'in PLC ağına (HUBBOX üzerinden) erişen ayrı bir sunucuda çalışması gerekiyorsa, o sunucuda yalnızca `nodered` servisini çalıştırın ve şu ortam değişkenlerini verin: `MQTT_HOST` (merkez sunucunun adı), `MQTT_USER`/`MQTT_PASSWORD` (Node-RED MQTT hesabı), `MQTT_CA_FILE=/data/certs/ca.crt` (CA dosyasını bağlayın), `NODERED_ADMIN_*`, `NODERED_CREDENTIAL_SECRET`. Merkezdeki API'nin `NODERED_URL` değeri bu Node-RED'i göstermeli ve `FLOW_MQTT_TLS=true` olmalıdır. Hatların `edge_id` değeri, API'nin `EDGE_ID` değeriyle eşleşen hatlar o Node-RED'e dağıtılır.
+PLC'ler izole makine ağında olduğu için PLC'yi okuyan Node-RED, ağa erişimi olan **HUBBOX gateway'inin içinde** çalışır. Merkezdeki API, akışları HUBBOX'taki Node-RED'e Admin API ile dağıtır; Node-RED telemetriyi merkezdeki EMQX'e gönderir. HUBBOX'taki mevcut akışlara dokunulmaz (yalnızca `mes-` önekli sekmeler yönetilir).
+
+```
+PLC ──S7/102──► HUBBOX (Node-RED) ──MQTT 1883/8883──► Sanal makine (EMQX, ingestion, API, DB, web)
+                       ▲
+                       └────────── HTTP 1880 (Admin API: akış dağıtımı) ──── API
+```
+
+**Ön koşullar**
+- HUBBOX Node-RED'de `node-red-contrib-s7` (3.x) yüklü olmalı.
+- Sanal makine → HUBBOX `:1880` (akış dağıtımı) ve HUBBOX → sanal makine `:1883` (veya TLS ile `:8883`) erişimi açık olmalı (kurumsal güvenlik duvarı).
+- HUBBOX saati **NTP ile senkron** olmalı: zaman damgaları edge'de atanır. Ingestion kaymayı heartbeat'lerden ölçer; 30 sn'yi aşarsa arayüzün sol alt köşesinde uyarı görünür.
+- Güvenlik: HUBBOX güvenlik duvarında PLC'nin 102 portunu yalnızca HUBBOX'ın kendisine açık bırakın.
+
+**`.env` ayarları**
+
+```ini
+EDGE_NODERED_URL=http://10.146.168.19:1880
+EDGE_NODERED_USER=...            # HUBBOX Node-RED kullanıcı adı (adminAuth kapalıysa boş)
+EDGE_NODERED_PASSWORD=...
+FLOW_MQTT_MODE=inline            # HUBBOX konteynerinin ortam değişkenlerini yönetmiyoruz
+FLOW_MQTT_HOST=10.146.x.x        # sanal makinenin kurumsal IP'si (HUBBOX'tan erişilebilir olmalı)
+FLOW_MQTT_USER=nodered           # = MQTT_NODERED_USER
+FLOW_MQTT_PASSWORD=...           # = MQTT_NODERED_PASSWORD
+```
+
+**Kontrol (salt okunur):**
+
+```bash
+docker compose --profile tools run --rm flow-cli check
+```
+
+Node-RED'e erişimi, kimlik doğrulamayı, Node-RED ve `node-red-contrib-s7` sürümlerini, mevcut sekmeleri/S7 bağlantılarını ve akışların hangi MQTT adresine bağlanacağını gösterir. Ardından arayüzden (PLC konfigüratörü → Dağıt) veya `make flows-preview` / `make flows-deploy` ile dağıtın.
 
 ## İşletim
 

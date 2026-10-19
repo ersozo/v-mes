@@ -20,10 +20,12 @@ PAYLOAD_VERSION = 1
 MANAGED_PREFIX = "mes-"
 HEARTBEAT_SECONDS = 10
 
-# MQTT bağlantı bilgileri Node-RED konteynerinin ortam değişkenlerinden okunur;
-# böylece şifreler akış JSON'ına ve API'ye girmez.
+# "env" modunda MQTT bağlantı bilgileri Node-RED konteynerinin ortam değişkenlerinden okunur
+# (bizim compose'daki Node-RED). Ortam değişkenlerini yönetemediğimiz edge'lerde (ör. HUBBOX
+# içindeki Node-RED) "inline" mod kullanılır: değerler akışa yazılır; şifre Node-RED'in
+# şifreli credential deposunda saklanır, akış JSON'ında görünmez.
 MQTT_HOST_REF = "${MQTT_HOST}"
-MQTT_CA_REF = "${MQTT_CA_FILE}"   # TLS açıkken Node-RED konteynerindeki CA dosyası yolu
+MQTT_CA_REF = "${MQTT_CA_FILE}"
 MQTT_USER_REF = "${MQTT_USER}"
 MQTT_PASSWORD_REF = "${MQTT_PASSWORD}"
 
@@ -80,13 +82,42 @@ def _js(value: object) -> str:
 
 @dataclass(frozen=True)
 class MqttOptions:
-    """Edge'in broker'a bağlantısı. Edge sahada, broker merkezdeyse TLS (8883) kullanılır."""
+    """Edge'in broker'a bağlantısı.
+
+    mode="env"    : host/kullanıcı/şifre/CA Node-RED ortam değişkenlerinden (${MQTT_HOST} …)
+    mode="inline" : host/kullanıcı/şifre/CA yolu doğrudan akışa yazılır (ortamı yönetilemeyen edge)
+    Edge sahada, broker merkezdeyse TLS (8883) önerilir.
+    """
 
     tls: bool = False
     port: int = 1883
+    mode: str = "env"
+    host: str | None = None
+    user: str | None = None
+    password: str | None = field(default=None, repr=False)
+    ca_file: str | None = None
+    # Şifre değişikliğinin fark hesabında görünmesi için (credentials Node-RED'den okunamaz);
+    # HMAC ile üretilir, şifreyi açığa çıkarmaz.
+    secret: str | None = field(default=None, repr=False)
+
+    def __post_init__(self) -> None:
+        if self.mode not in ("env", "inline"):
+            raise ValueError("FLOW_MQTT_MODE 'env' veya 'inline' olmalı")
+        if self.mode == "inline" and not (self.host and self.user and self.password):
+            raise ValueError("inline MQTT modu için FLOW_MQTT_HOST, FLOW_MQTT_USER ve FLOW_MQTT_PASSWORD gerekli")
+        if self.mode == "inline" and self.tls and not self.ca_file:
+            raise ValueError("inline modda TLS için edge üzerindeki CA dosyası yolu (FLOW_MQTT_CA_FILE) gerekli")
+
+    def credential_fingerprint(self) -> str | None:
+        if self.mode != "inline":
+            return None
+        import hmac
+
+        key = (self.secret or "vmes").encode()
+        return hmac.new(key, f"{self.user}\0{self.password}".encode(), hashlib.sha256).hexdigest()[:16]
 
 
-def _tls_config(tab: str) -> dict:
+def _tls_config(tab: str, mqtt: MqttOptions) -> dict:
     return {
         "id": node_id(tab, "tls"),
         "type": "tls-config",
@@ -94,7 +125,7 @@ def _tls_config(tab: str) -> dict:
         "name": "MES broker CA",
         "cert": "",
         "key": "",
-        "ca": MQTT_CA_REF,
+        "ca": mqtt.ca_file if mqtt.mode == "inline" else MQTT_CA_REF,
         "certname": "",
         "keyname": "",
         "caname": "",
@@ -105,13 +136,14 @@ def _tls_config(tab: str) -> dict:
 
 
 def _broker(tab: str, client_id: str, label: str, mqtt: MqttOptions = MqttOptions()) -> list[dict]:
-    nodes = [_tls_config(tab)] if mqtt.tls else []
+    nodes = [_tls_config(tab, mqtt)] if mqtt.tls else []
+    inline = mqtt.mode == "inline"
     nodes.append({
         "id": node_id(tab, "broker"),
         "type": "mqtt-broker",
         "z": tab,
         "name": label,
-        "broker": MQTT_HOST_REF,
+        "broker": mqtt.host if inline else MQTT_HOST_REF,
         "port": str(mqtt.port),
         "clientid": client_id,
         "autoConnect": True,
@@ -124,7 +156,8 @@ def _broker(tab: str, client_id: str, label: str, mqtt: MqttOptions = MqttOption
         "birthTopic": "",
         "closeTopic": "",
         "willTopic": "",
-        "credentials": {"user": MQTT_USER_REF, "password": MQTT_PASSWORD_REF},
+        **({"mesCredentialFingerprint": mqtt.credential_fingerprint()} if inline else {}),
+        "credentials": {"user": mqtt.user, "password": mqtt.password} if inline else {"user": MQTT_USER_REF, "password": MQTT_PASSWORD_REF},
     })
     return nodes
 

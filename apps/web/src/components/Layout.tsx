@@ -24,9 +24,17 @@ const THEME_LABEL = { system: "Tema: sistem", light: "Tema: açık", dark: "Tema
 function ConnectionStatus() {
   const connected = useLive((s) => s.connected);
   const edges = useLive((s) => Object.entries(s.edges));
+  const skews = useLive((s) => Object.entries(s.edgeSkew));
   const offlineEdges = edges.filter(([, online]) => !online).map(([id]) => id);
-  const ok = connected && offlineEdges.length === 0;
-  const text = !connected ? "Canlı bağlantı yok" : offlineEdges.length ? `Edge erişilemiyor: ${offlineEdges.join(", ")}` : "Canlı";
+  const skewed = skews.filter(([, v]) => v !== null && Math.abs(v) > 30);
+  const ok = connected && offlineEdges.length === 0 && skewed.length === 0;
+  const text = !connected
+    ? "Canlı bağlantı yok"
+    : offlineEdges.length
+      ? `Edge erişilemiyor: ${offlineEdges.join(", ")}`
+      : skewed.length
+        ? `Edge saati kaymış: ${skewed.map(([id, v]) => `${id} ${v! > 0 ? "−" : "+"}${Math.abs(v!)} sn`).join(", ")} (NTP)`
+        : "Canlı";
   return (
     <div className="flex items-center gap-2 px-3 text-[12px] text-ink-2" role="status" title={text}>
       <span className={cn("size-2 rounded-full", ok ? "bg-good" : "bg-critical", ok && "animate-pulse")} aria-hidden />

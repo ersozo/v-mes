@@ -34,16 +34,18 @@ class DbSettings:
 
 @dataclass(frozen=True)
 class NodeRedSettings:
+    """Edge'deki Node-RED Admin API'si. Node-RED'de adminAuth kapalıysa kullanıcı/şifre boş bırakılabilir."""
+
     url: str
-    user: str
-    password: str
+    user: str | None
+    password: str | None
 
     @classmethod
     def from_env(cls) -> NodeRedSettings:
         return cls(
             url=_env("NODERED_URL", "http://nodered:1880").rstrip("/"),
-            user=_env("NODERED_ADMIN_USER", "admin"),
-            password=_env("NODERED_ADMIN_PASSWORD"),
+            user=os.environ.get("NODERED_ADMIN_USER") or None,
+            password=os.environ.get("NODERED_ADMIN_PASSWORD") or None,
         )
 
 
@@ -72,8 +74,23 @@ def edge_id() -> str:
 
 
 def flow_mqtt_options():
-    """Üretilen akışlardaki edge → broker bağlantısı (FLOW_MQTT_TLS, FLOW_MQTT_PORT)."""
+    """Üretilen akışlardaki edge → broker bağlantısı.
+
+    FLOW_MQTT_MODE=env (varsayılan; compose'daki Node-RED) veya inline (HUBBOX gibi harici edge):
+      FLOW_MQTT_HOST, FLOW_MQTT_USER, FLOW_MQTT_PASSWORD, FLOW_MQTT_CA_FILE (TLS'de edge'deki CA yolu)
+    FLOW_MQTT_TLS=true → varsayılan port 8883.
+    """
     from mes_api.flows.generator import MqttOptions
 
-    tls = os.environ.get("FLOW_MQTT_TLS", "false").lower() == "true"
-    return MqttOptions(tls=tls, port=int(os.environ.get("FLOW_MQTT_PORT", "8883" if tls else "1883")))
+    # compose, tanımsız değişkenleri boş metin olarak geçirir → boş = tanımsız
+    tls = (os.environ.get("FLOW_MQTT_TLS") or "false").lower() == "true"
+    return MqttOptions(
+        tls=tls,
+        port=int(os.environ.get("FLOW_MQTT_PORT") or ("8883" if tls else "1883")),
+        mode=(os.environ.get("FLOW_MQTT_MODE") or "env").lower(),
+        host=os.environ.get("FLOW_MQTT_HOST") or None,
+        user=os.environ.get("FLOW_MQTT_USER") or None,
+        password=os.environ.get("FLOW_MQTT_PASSWORD") or None,
+        ca_file=os.environ.get("FLOW_MQTT_CA_FILE") or None,
+        secret=os.environ.get("JWT_SECRET") or None,
+    )

@@ -22,11 +22,13 @@ interface LiveState {
   connected: boolean;
   machines: Record<number, LiveMachine>;
   edges: Record<string, boolean>;
+  /** edge_id → saat kayması (sn; pozitif = edge geride) */
+  edgeSkew: Record<string, number | null>;
   /** Her duruş açılıp kapandığında artar (sorguları tazelemek için) */
   downtimeVersion: number;
 }
 
-let state: LiveState = { connected: false, machines: {}, edges: {}, downtimeVersion: 0 };
+let state: LiveState = { connected: false, machines: {}, edges: {}, edgeSkew: {}, downtimeVersion: 0 };
 const subs = new Set<() => void>();
 let socket: Socket | null = null;
 
@@ -58,14 +60,19 @@ function connect(token: string): void {
     if (err.message === "unauthorized") await refreshSession();
   });
 
-  socket.on("snapshot", (snap: { machines: Omit<LiveMachine, "tags" | "tags_ts" | "counts">[]; edges: { edge_id: string; online: boolean }[]; telemetry: Record<string, { ts: string; tags: Record<string, number> }> }) => {
+  socket.on("snapshot", (snap: { machines: Omit<LiveMachine, "tags" | "tags_ts" | "counts">[]; edges: { edge_id: string; online: boolean; skew_seconds: number | null }[]; telemetry: Record<string, { ts: string; tags: Record<string, number> }> }) => {
     set((s) => {
       const machines = { ...s.machines };
       for (const m of snap.machines) {
         const t = snap.telemetry[m.machine_id];
         machines[m.machine_id] = { ...(machines[m.machine_id] ?? blank(m.machine_id, m.code)), ...m, tags: t?.tags ?? {}, tags_ts: t?.ts ?? null };
       }
-      return { ...s, machines, edges: Object.fromEntries(snap.edges.map((e) => [e.edge_id, e.online])) };
+      return {
+        ...s,
+        machines,
+        edges: Object.fromEntries(snap.edges.map((e) => [e.edge_id, e.online])),
+        edgeSkew: Object.fromEntries(snap.edges.map((e) => [e.edge_id, e.skew_seconds])),
+      };
     });
   });
 
@@ -90,6 +97,7 @@ function connect(token: string): void {
     set((s) => ({ ...s, downtimeVersion: s.downtimeVersion + 1 }));
   });
   socket.on("edge", (e: { edge_id: string; online: boolean }) => set((s) => ({ ...s, edges: { ...s.edges, [e.edge_id]: e.online } })));
+  socket.on("edge_clock", (e: { edge_id: string; skew_seconds: number }) => set((s) => ({ ...s, edgeSkew: { ...s.edgeSkew, [e.edge_id]: e.skew_seconds } })));
 }
 
 onAuthChange((user, token) => {
@@ -98,7 +106,7 @@ onAuthChange((user, token) => {
   } else {
     socket?.close();
     socket = null;
-    set(() => ({ connected: false, machines: {}, edges: {}, downtimeVersion: 0 }));
+    set(() => ({ connected: false, machines: {}, edges: {}, edgeSkew: {}, downtimeVersion: 0 }));
   }
 });
 

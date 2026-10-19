@@ -20,6 +20,7 @@ class NodeRedAdmin:
         self._s = settings
         self._client = client or httpx.Client(base_url=settings.url, timeout=15)
         self._token: str | None = None
+        self._auth: bool | None = None
 
     def close(self) -> None:
         self._client.close()
@@ -30,7 +31,20 @@ class NodeRedAdmin:
     def __exit__(self, *exc: object) -> None:
         self.close()
 
+    def auth_required(self) -> bool:
+        """Node-RED'de adminAuth açık mı? (GET /auth/login boş nesne dönüyorsa kapalıdır)"""
+        r = self._client.get("/auth/login")
+        if r.status_code != 200:
+            raise NodeRedError(f"Node-RED'e ulaşılamadı veya beklenmeyen yanıt (HTTP {r.status_code})")
+        return bool(r.json().get("type"))
+
     def _auth_headers(self) -> dict[str, str]:
+        if self._auth is None:
+            self._auth = self.auth_required()
+        if not self._auth:
+            return {}
+        if not self._s.user or not self._s.password:
+            raise NodeRedError("Node-RED kimlik doğrulama istiyor; NODERED_ADMIN_USER / NODERED_ADMIN_PASSWORD tanımlayın")
         if self._token is None:
             r = self._client.post(
                 "/auth/token",
@@ -71,3 +85,15 @@ class NodeRedAdmin:
         if r.status_code != 200:
             raise NodeRedError(f"Deploy başarısız (HTTP {r.status_code}): {r.text[:500]}")
         return r.json()["rev"]
+
+    def get_settings(self) -> dict:
+        r = self._client.get("/settings", headers=self._auth_headers())
+        if r.status_code != 200:
+            raise NodeRedError(f"Ayarlar okunamadı (HTTP {r.status_code})")
+        return r.json()
+
+    def get_nodes(self) -> list[dict]:
+        r = self._client.get("/nodes", headers={**self._auth_headers(), "Accept": "application/json"})
+        if r.status_code != 200:
+            raise NodeRedError(f"Yüklü düğümler okunamadı (HTTP {r.status_code})")
+        return r.json()

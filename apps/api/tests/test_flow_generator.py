@@ -128,3 +128,36 @@ def test_tls_option_adds_tls_config_per_tab():
         assert any(t["id"] == b["tls"] and t["z"] == b["z"] and t["ca"] == "${MQTT_CA_FILE}" for t in tls)
     # Varsayılan: TLS yok, tls-config düğümü yok
     assert not by_type(build_managed_flows([line(1, machine("cnc-01"))], "edge-01"), "tls-config")
+
+
+def inline(**kw):
+    base = dict(mode="inline", host="10.146.0.50", user="hubbox-edge", password="s3cret", secret="k")
+    return MqttOptions(**{**base, **kw})
+
+
+def test_inline_mode_writes_literal_broker_and_credentials():
+    nodes = build_managed_flows([line(1, machine("cnc-01"))], "edge-01", inline())
+    for b in by_type(nodes, "mqtt-broker"):
+        assert b["broker"] == "10.146.0.50" and b["port"] == "1883"
+        assert b["credentials"] == {"user": "hubbox-edge", "password": "s3cret"}
+        assert len(b["mesCredentialFingerprint"]) == 16 and "s3cret" not in b["mesCredentialFingerprint"]
+    assert "${" not in json.dumps([n for n in nodes if n["type"] == "mqtt-broker"])
+
+
+def test_password_change_is_visible_in_diff_even_though_credentials_are_not():
+    v1 = build_managed_flows([line(1, machine("cnc-01"))], "edge-01", inline())
+    as_returned = [{k: v for k, v in n.items() if k != "credentials"} for n in v1]
+    assert not diff_managed(as_returned, build_managed_flows([line(1, machine("cnc-01"))], "edge-01", inline())).has_changes
+    d = diff_managed(as_returned, build_managed_flows([line(1, machine("cnc-01"))], "edge-01", inline(password="yeni")))
+    assert set(d.changed_tabs) == {line_tab_id(1), edge_tab_id("edge-01")}
+
+
+def test_inline_mode_validation():
+    import pytest
+
+    with pytest.raises(ValueError):
+        MqttOptions(mode="inline", host="h")              # kullanıcı/şifre eksik
+    with pytest.raises(ValueError):
+        inline(tls=True)                                  # TLS için edge'deki CA yolu gerekli
+    nodes = build_managed_flows([line(1, machine("cnc-01"))], "edge-01", inline(tls=True, port=8883, ca_file="/data/certs/ca.crt"))
+    assert all(t["ca"] == "/data/certs/ca.crt" for t in by_type(nodes, "tls-config"))
