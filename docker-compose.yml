@@ -1,17 +1,27 @@
 name: v-mes-2
 
+# Tüm servislerde log döndürme (disk dolmasın)
+x-logging: &logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "5"
+
 services:
   mssql:
+    logging: *logging
     image: mcr.microsoft.com/mssql/server:2022-latest
     environment:
       ACCEPT_EULA: "Y"
-      MSSQL_PID: Developer
+      # Developer üretimde kullanılamaz; lisansınıza göre Standard/Enterprise/Express
+      MSSQL_PID: ${MSSQL_PID:-Developer}
       MSSQL_SA_PASSWORD: ${MSSQL_SA_PASSWORD:?MSSQL_SA_PASSWORD gerekli}
       TZ: UTC
     ports:
       - "${MSSQL_PORT:-1433}:1433"
     volumes:
       - mssql-data:/var/opt/mssql
+      - ./backups:/var/opt/mssql/backup
     healthcheck:
       test: ["CMD-SHELL", "/opt/mssql-tools18/bin/sqlcmd -C -S localhost -U sa -P \"$$MSSQL_SA_PASSWORD\" -Q 'SELECT 1' -b -o /dev/null"]
       interval: 10s
@@ -22,6 +32,7 @@ services:
 
   # Tek seferlik: veritabanını oluşturur, migration'ları uygular (ve DB_SEED=1 ise dev verisini yükler).
   db-migrate:
+    logging: *logging
     build: ./db
     environment:
       MSSQL_HOST: mssql
@@ -39,6 +50,7 @@ services:
     restart: "no"
 
   emqx:
+    logging: *logging
     image: emqx/emqx:5.8.9
     environment:
       EMQX_NODE__NAME: emqx@emqx.local
@@ -66,6 +78,7 @@ services:
     restart: unless-stopped
 
   nodered:
+    logging: *logging
     build: ./infra/nodered
     environment:
       TZ: UTC
@@ -76,6 +89,7 @@ services:
       MQTT_HOST: emqx
       MQTT_USER: ${MQTT_NODERED_USER:-nodered}
       MQTT_PASSWORD: ${MQTT_NODERED_PASSWORD}
+      MQTT_CA_FILE: /data/certs/ca.crt
     ports:
       - "${NODERED_PORT:-1880}:1880"
     # İmajın kendi healthcheck'i /data/settings.js bekler; ayarlar başka yolda olduğu için basit HTTP kontrolü
@@ -93,6 +107,7 @@ services:
     restart: unless-stopped
 
   ingestion:
+    logging: *logging
     build:
       context: .
       dockerfile: apps/ingestion/Dockerfile
@@ -123,6 +138,7 @@ services:
     restart: unless-stopped
 
   api:
+    logging: *logging
     build: ./apps/api
     environment:
       MSSQL_HOST: mssql
@@ -138,6 +154,8 @@ services:
       NODERED_ADMIN_USER: ${NODERED_ADMIN_USER:-admin}
       NODERED_ADMIN_PASSWORD: ${NODERED_ADMIN_PASSWORD}
       EDGE_ID: ${EDGE_ID:-edge-01}
+      FLOW_MQTT_TLS: ${FLOW_MQTT_TLS:-false}
+      LOG_LEVEL: ${LOG_LEVEL:-info}
     ports:
       - "${API_PORT:-8000}:8000"
     depends_on:
@@ -153,6 +171,7 @@ services:
 
   # Ön yüz: statik React derlemesi + /api ve /socket.io için ters vekil (tek origin)
   web:
+    logging: *logging
     build:
       context: .
       dockerfile: apps/web/Dockerfile
@@ -165,6 +184,7 @@ services:
 
   # Geliştirme: S7-1200/1500 simülatörü (makine başına ayrı S7 portu) + kontrol API'si
   simulator:
+    logging: *logging
     build: ./apps/simulator
     profiles: ["dev"]
     ports:
@@ -174,6 +194,7 @@ services:
   # Akış üretici CLI (3. aşamada API servisine taşınacak):
   #   docker compose run --rm flow-cli preview | deploy | dump
   flow-cli:
+    logging: *logging
     build: ./apps/api
     profiles: ["tools"]
     entrypoint: ["python", "-I", "-m", "mes_api.flows.cli"]

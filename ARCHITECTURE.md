@@ -364,13 +364,21 @@ Hedef: **etkileyici ama sade.** Her grafik tek bir soruyu net cevaplar; süs yer
 
 ## 13. Operasyon
 
-- Compose proje adı `v-mes-2`'dir. Aynı makinedeki eski `../v-mes` projesiyle konteyner ve port çakışmasını önlemek için bu ad değiştirilmemelidir; yerel `.env` dosyasında farklı host portları kullanılır (14330, 11883, 18084, 11880).
-- Günlük komutlar `Makefile` içindedir (`make up`, `make seed`, `make test`). Node.js yerelde kurulu olmasa da Node komutları Docker içinde çalışır.
-- Şema değişiklikleri yalnızca yeni bir `db/migrations/V###__ad.sql` dosyasıyla yapılır. Uygulanmış bir dosya değiştirilirse migration aracı durur.
-- `docker compose up` ile tüm sistem (MSSQL, EMQX, Node-RED, ingestion, api, web, simulator) ayağa kalkar. Simülatör `profiles: [dev]` altındadır.
-- Her servis `/health` uç noktası sunar; compose healthcheck'leri bunlara bağlıdır.
-- Loglar JSON formatında (pino / structlog); korelasyon için `machine_code` ve istek kimliği eklenir.
-- Yedekleme: MSSQL için günlük tam yedek + log yedeği (üretim ortamında).
+Ayrıntılı kurulum ve işletim talimatları: **README.md**.
+
+- Compose proje adı `v-mes-2`'dir. Aynı makinedeki eski `../v-mes` projesiyle konteyner ve port çakışmasını önlemek için bu ad değiştirilmemelidir; yerel `.env` dosyasında farklı host portları kullanılır.
+- Günlük komutlar `Makefile` içindedir; Node.js/Python yerelde kurulu olmasa da tüm derleme ve testler Docker içinde çalışır.
+- **Ortamlar:** `docker-compose.yml` (geliştirme; `dev` profili simülatörü başlatır) + `docker-compose.prod.yml` katmanı (üretim):
+  - Web yalnızca HTTPS (nginx TLS 1.2/1.3, HTTP/2, HSTS; 80 → 443). Refresh çerezi `Secure`.
+  - MSSQL, Node-RED editörü ve EMQX paneli yalnızca `127.0.0.1`; API/ingestion portları kapalı (web üzerinden erişilir).
+  - Saha edge'leri broker'a MQTT TLS (8883) ile bağlanır: `FLOW_MQTT_TLS=true` olduğunda akış üretici her sekmeye `tls-config` düğümü ekler (CA yolu `${MQTT_CA_FILE}` ortam değişkeninden).
+  - Sertifikalar `infra/certs/` altında (git dışı); test için `scripts/gen-certs.sh`.
+- **Güvenlik başlıkları** (CSP, X-Frame-Options, nosniff, Referrer-Policy) nginx'te; giriş uç noktasında IP başına dakikada 10 istek sınırı (API'deki kullanıcı adı bazlı kilide ek).
+- **Zamanlanmış bakım işleri** API süreci içinde çalışır; `sp_getapplock` ile çok örnekli dağıtımda tek örnekte yürür, durumu `dbo.job_runs`'ta tutulur (`/api/admin/jobs`): saatlik partition garantisi; gece (`maintenance_hour_local`, varsayılan 02:00) saklama süresi temizliği, columnstore sıkıştırma, oturum temizliği.
+- **Yedekleme:** `scripts/backup.sh` (CHECKSUM + RESTORE VERIFYONLY ile doğrulanır, `BACKUP_KEEP_DAYS` saklama); `scripts/restore.sh … --yes` yazan servisleri durdurup geri yükler ve uygulama kullanıcısını yeniden eşler. Yedekler `./backups` klasörüne (MSSQL konteynerinde `/var/opt/mssql/backup`) yazılır.
+- Her servis sağlık uç noktası sunar; compose healthcheck'leri bunlara bağlıdır. Tüm servislerde log döndürme (json-file, 5 × 10 MB).
+- Ingestion ve API veritabanı/broker bağlantısı koptuğunda kendiliğinden yeniden bağlanır; ingestion veri yazılamazken tamponlar (üst sınırlı) ve kalıcı MQTT oturumu sayesinde kısa kesintilerde QoS 1 mesajlar broker'da bekler.
+- Şema değişiklikleri yalnızca yeni bir `db/migrations/V###__ad.sql` dosyasıyla yapılır. Uygulanmış bir dosya değiştirilirse migration aracı durur. `DB_RESET` yalnızca adı `_TEST` ile biten veritabanlarında çalışır.
 
 ---
 

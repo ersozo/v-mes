@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import os
 from collections.abc import AsyncIterator
@@ -10,13 +11,14 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI, Response
 from fastapi.middleware.cors import CORSMiddleware
 
-from mes_api import errors
+from mes_api import errors, jobs
 from mes_api.db import connect, fetch_one
 from mes_api.deps import auth_settings, db_settings
-from mes_api.routers import auth, definitions, flows, hierarchy, operations, reports, users
+from mes_api.routers import admin, auth, definitions, flows, hierarchy, operations, reports, users
 from mes_api.security import hash_password, validate_password_strength
 
 log = logging.getLogger("mes_api")
+logging.basicConfig(level=os.environ.get("LOG_LEVEL", "INFO").upper(), format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 
 
 def bootstrap_admin() -> None:
@@ -42,7 +44,14 @@ def bootstrap_admin() -> None:
 async def lifespan(_: FastAPI) -> AsyncIterator[None]:
     auth_settings()  # yapılandırma hatalarını açılışta yakala
     bootstrap_admin()
+    stop = asyncio.Event()
+    task = None
+    if os.environ.get("JOBS_ENABLED", "true").lower() == "true":
+        task = asyncio.create_task(jobs.scheduler(db_settings(), stop))
     yield
+    stop.set()
+    if task:
+        await task
 
 
 app = FastAPI(title="V-MES API", version="0.1.0", lifespan=lifespan,
@@ -54,7 +63,7 @@ if origins:
                        allow_methods=["*"], allow_headers=["*"])
 
 errors.install(app)
-for r in (auth.router, users.router, hierarchy.router, definitions.router, flows.router, operations.router, reports.router):
+for r in (auth.router, users.router, hierarchy.router, definitions.router, flows.router, operations.router, reports.router, admin.router):
     app.include_router(r)
 
 

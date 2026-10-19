@@ -15,7 +15,7 @@ from mes_api.db import connect
 from mes_api.flows.generator import build_managed_flows, diff_managed, merge_into_existing
 from mes_api.flows.nodered import NodeRedAdmin
 from mes_api.flows.repository import load_line_specs
-from mes_api.settings import NodeRedSettings
+from mes_api.settings import NodeRedSettings, flow_mqtt_options
 
 
 def main() -> int:
@@ -26,7 +26,7 @@ def main() -> int:
 
     with connect() as conn:
         lines = load_line_specs(conn)
-    managed = build_managed_flows(lines, args.edge_id)
+    managed = build_managed_flows(lines, args.edge_id, flow_mqtt_options())
 
     if args.command == "dump":
         json.dump(managed, sys.stdout, indent=2, ensure_ascii=False)

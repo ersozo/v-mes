@@ -1,0 +1,9 @@
+{
+  "name": "vmes-e2e",
+  "private": true,
+  "type": "module",
+  "description": "Uçtan uca testler (çalışan stack'e karşı). make e2e",
+  "devDependencies": {
+    "@playwright/test": "1.64.0"
+  }
+}

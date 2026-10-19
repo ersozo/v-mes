@@ -23,6 +23,7 @@ HEARTBEAT_SECONDS = 10
 # MQTT bağlantı bilgileri Node-RED konteynerinin ortam değişkenlerinden okunur;
 # böylece şifreler akış JSON'ına ve API'ye girmez.
 MQTT_HOST_REF = "${MQTT_HOST}"
+MQTT_CA_REF = "${MQTT_CA_FILE}"   # TLS açıkken Node-RED konteynerindeki CA dosyası yolu
 MQTT_USER_REF = "${MQTT_USER}"
 MQTT_PASSWORD_REF = "${MQTT_PASSWORD}"
 
@@ -77,17 +78,45 @@ def _js(value: object) -> str:
     return json.dumps(value, ensure_ascii=False)
 
 
-def _broker(tab: str, client_id: str, label: str) -> dict:
+@dataclass(frozen=True)
+class MqttOptions:
+    """Edge'in broker'a bağlantısı. Edge sahada, broker merkezdeyse TLS (8883) kullanılır."""
+
+    tls: bool = False
+    port: int = 1883
+
+
+def _tls_config(tab: str) -> dict:
     return {
+        "id": node_id(tab, "tls"),
+        "type": "tls-config",
+        "z": tab,
+        "name": "MES broker CA",
+        "cert": "",
+        "key": "",
+        "ca": MQTT_CA_REF,
+        "certname": "",
+        "keyname": "",
+        "caname": "",
+        "servername": "",
+        "verifyservercert": True,
+        "alpnprotocol": "",
+    }
+
+
+def _broker(tab: str, client_id: str, label: str, mqtt: MqttOptions = MqttOptions()) -> list[dict]:
+    nodes = [_tls_config(tab)] if mqtt.tls else []
+    nodes.append({
         "id": node_id(tab, "broker"),
         "type": "mqtt-broker",
         "z": tab,
         "name": label,
         "broker": MQTT_HOST_REF,
-        "port": "1883",
+        "port": str(mqtt.port),
         "clientid": client_id,
         "autoConnect": True,
-        "usetls": False,
+        "usetls": mqtt.tls,
+        **({"tls": node_id(tab, "tls")} if mqtt.tls else {}),
         "protocolVersion": "4",
         "keepalive": "30",
         "cleansession": True,
@@ -96,7 +125,8 @@ def _broker(tab: str, client_id: str, label: str) -> dict:
         "closeTopic": "",
         "willTopic": "",
         "credentials": {"user": MQTT_USER_REF, "password": MQTT_PASSWORD_REF},
-    }
+    })
+    return nodes
 
 
 def _mqtt_out(tab: str, broker_id: str, y: int) -> dict:
@@ -249,10 +279,10 @@ def _machine_nodes(tab: str, line: LineSpec, m: MachineSpec, row: int, mqtt_out_
     ]
 
 
-def build_line_flow(line: LineSpec) -> list[dict]:
+def build_line_flow(line: LineSpec, mqtt: MqttOptions = MqttOptions()) -> list[dict]:
     tab = line_tab_id(line.id)
-    broker = _broker(tab, f"vmes-{line.edge_id}-line-{line.id}", f"EMQX ({line.area_slug}/{line.slug})")
-    mqtt_out = _mqtt_out(tab, broker["id"], 60 + max(len(line.machines) - 1, 0) * 60)
+    broker_nodes = _broker(tab, f"vmes-{line.edge_id}-line-{line.id}", f"EMQX ({line.area_slug}/{line.slug})", mqtt)
+    mqtt_out = _mqtt_out(tab, broker_nodes[-1]["id"], 60 + max(len(line.machines) - 1, 0) * 60)
     nodes: list[dict] = [
         {
             "id": tab,
@@ -262,7 +292,7 @@ def build_line_flow(line: LineSpec) -> list[dict]:
             "info": f"Otomatik üretildi: {line.area_slug}/{line.slug}. Elle yapılan değişiklikler bir sonraki deploy'da silinir.",
             "env": [],
         },
-        broker,
+        *broker_nodes,
         mqtt_out,
     ]
     for row, machine in enumerate(sorted(line.machines, key=lambda m: m.code)):
@@ -270,10 +300,10 @@ def build_line_flow(line: LineSpec) -> list[dict]:
     return nodes
 
 
-def build_edge_flow(edge_id: str) -> list[dict]:
+def build_edge_flow(edge_id: str, mqtt: MqttOptions = MqttOptions()) -> list[dict]:
     tab = edge_tab_id(edge_id)
-    broker = _broker(tab, f"vmes-{edge_id}-edge", "EMQX (edge)")
-    mqtt_out = _mqtt_out(tab, broker["id"], 60)
+    broker_nodes = _broker(tab, f"vmes-{edge_id}-edge", "EMQX (edge)", mqtt)
+    mqtt_out = _mqtt_out(tab, broker_nodes[-1]["id"], 60)
     inject_id = node_id(tab, "heartbeat-inject")
     fn_id = node_id(tab, "heartbeat-fn")
     return [
@@ -285,7 +315,7 @@ def build_edge_flow(edge_id: str) -> list[dict]:
             "info": "Otomatik üretildi: edge canlılık sinyali (heartbeat).",
             "env": [],
         },
-        broker,
+        *broker_nodes,
         mqtt_out,
         {
             "id": inject_id,
@@ -325,12 +355,12 @@ def build_edge_flow(edge_id: str) -> list[dict]:
     ]
 
 
-def build_managed_flows(lines: list[LineSpec], edge_id: str) -> list[dict]:
+def build_managed_flows(lines: list[LineSpec], edge_id: str, mqtt: MqttOptions = MqttOptions()) -> list[dict]:
     """Belirli bir edge'in yönettiği tüm sekmeler ve düğümler (yalnızca makinesi olan hatlar)."""
-    nodes = build_edge_flow(edge_id)
+    nodes = build_edge_flow(edge_id, mqtt)
     for line in sorted(lines, key=lambda l: l.id):
         if line.edge_id == edge_id and line.machines:
-            nodes.extend(build_line_flow(line))
+            nodes.extend(build_line_flow(line, mqtt))
     return nodes
 
 

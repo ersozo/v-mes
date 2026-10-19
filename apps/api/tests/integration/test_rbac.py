@@ -30,3 +30,15 @@ def test_plant_settings_admin_only(client, users, role, expected):
 def test_flows_require_engineer(client, users):
     assert client.get("/api/flows/preview", headers=users["operator"]).status_code == 403
     assert client.post("/api/flows/deploy", headers=users["viewer"]).status_code == 403
+
+
+def test_admin_jobs(client, users):
+    assert client.get("/api/admin/jobs", headers=users["engineer"]).status_code == 403
+    jobs = client.get("/api/admin/jobs", headers=users["admin"]).json()
+    assert {j["name"] for j in jobs} == {"telemetry_partitions", "telemetry_purge", "telemetry_compress", "auth_cleanup"}
+    for name in ("telemetry_partitions", "telemetry_compress", "auth_cleanup", "telemetry_purge"):
+        r = client.post(f"/api/admin/jobs/{name}/run", headers=users["admin"]).json()
+        assert r["status"] == "success", r
+    after = {j["name"]: j for j in client.get("/api/admin/jobs", headers=users["admin"]).json()}
+    assert after["telemetry_partitions"]["last_status"] == "success" and after["telemetry_partitions"]["last_finished_at"].endswith("Z")
+    assert client.post("/api/admin/jobs/bogus/run", headers=users["admin"]).status_code == 404

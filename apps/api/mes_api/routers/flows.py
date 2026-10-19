@@ -15,7 +15,7 @@ from mes_api.flows.nodered import FlowConflictError, NodeRedAdmin, NodeRedError
 from mes_api.flows.repository import load_line_specs
 from mes_api.oee.window import iso
 from mes_api.security import TokenUser
-from mes_api.settings import NodeRedSettings, edge_id
+from mes_api.settings import NodeRedSettings, edge_id, flow_mqtt_options
 
 router = APIRouter(prefix="/api/flows", tags=["flows"])
 
@@ -41,7 +41,7 @@ def _warnings(conn: pymssql.Connection, edge: str) -> list[str]:
 
 def _plan(conn: pymssql.Connection) -> tuple[list[dict], list[dict], str, dict, list[str]]:
     edge = edge_id()
-    managed = build_managed_flows(load_line_specs(conn), edge)
+    managed = build_managed_flows(load_line_specs(conn), edge, flow_mqtt_options())
     try:
         with NodeRedAdmin(nodered_settings()) as nr:
             existing, rev = nr.get_flows()

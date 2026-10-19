@@ -69,3 +69,11 @@ class AuthSettings:
 
 def edge_id() -> str:
     return _env("EDGE_ID", "edge-01")
+
+
+def flow_mqtt_options():
+    """Üretilen akışlardaki edge → broker bağlantısı (FLOW_MQTT_TLS, FLOW_MQTT_PORT)."""
+    from mes_api.flows.generator import MqttOptions
+
+    tls = os.environ.get("FLOW_MQTT_TLS", "false").lower() == "true"
+    return MqttOptions(tls=tls, port=int(os.environ.get("FLOW_MQTT_PORT", "8883" if tls else "1883")))

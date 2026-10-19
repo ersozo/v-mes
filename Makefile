@@ -6,7 +6,7 @@ PY_TEST = docker run --rm -v "$(CURDIR)/apps/$(1)":/src:ro -v "$(CURDIR)/package
 	-e PLC_VECTORS=/vectors/plc.json python:3.12-slim \
 	sh -c 'cp -r /src /tmp/app && cd /tmp/app && pip install -q --root-user-action=ignore . pytest >/dev/null && python -m pytest -q'
 
-.PHONY: up down logs migrate seed install test test-ts test-py test-api-int build ps flows-preview flows-deploy smoke
+.PHONY: up down logs migrate seed install test test-ts test-py test-api-int e2e build ps flows-preview flows-deploy smoke backup certs
 
 up:            ## Tüm servisleri başlat ve migration'ları uygula
 	docker compose up -d --build mssql emqx nodered
@@ -59,3 +59,15 @@ smoke:         ## Socket.io canlı yayın duman testi (stack çalışırken)
 
 build:
 	$(call NODE_RUN,pnpm install --frozen-lockfile && pnpm -r build)
+
+e2e:           ## Uçtan uca tarayıcı testleri (çalışan dev stack'e karşı; simülatör gerekir)
+	docker run --rm --network v-mes-2_default -v "$(CURDIR)/e2e":/e2e -v vmes2-e2e-npm:/e2e/node_modules -w /e2e \
+		--env-file .env -e BASE_URL=http://web:8080 -e SIMULATOR_URL=http://simulator:8090 \
+		mcr.microsoft.com/playwright:v1.64.0-noble \
+		sh -c 'test -d node_modules/@playwright/test || npm i --no-save --silent @playwright/test@1.64.0; npx playwright test'
+
+backup:        ## MES_DB tam yedeği (./backups)
+	./scripts/backup.sh
+
+certs:         ## Geliştirme için kendinden imzalı TLS sertifikaları (infra/certs)
+	./scripts/gen-certs.sh

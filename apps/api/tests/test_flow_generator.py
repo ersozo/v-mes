@@ -1,6 +1,7 @@
 import json
 
 from mes_api.flows.generator import (
+    MqttOptions,
     LineSpec,
     MachineSpec,
     TagSpec,
@@ -115,3 +116,15 @@ def test_unchanged_tabs_reuse_existing_nodes_without_credentials():
     assert "credentials" not in brokers[line_tab_id(2)]
     assert "credentials" not in brokers[edge_tab_id("edge-01")]
     assert len(merged) == len(v2)
+
+
+def test_tls_option_adds_tls_config_per_tab():
+    nodes = build_managed_flows([line(1, machine("cnc-01"))], "edge-01", MqttOptions(tls=True, port=8883))
+    tls = by_type(nodes, "tls-config")
+    brokers = by_type(nodes, "mqtt-broker")
+    assert len(tls) == len(brokers) == 2
+    for b in brokers:
+        assert b["usetls"] is True and b["port"] == "8883"
+        assert any(t["id"] == b["tls"] and t["z"] == b["z"] and t["ca"] == "${MQTT_CA_FILE}" for t in tls)
+    # Varsayılan: TLS yok, tls-config düğümü yok
+    assert not by_type(build_managed_flows([line(1, machine("cnc-01"))], "edge-01"), "tls-config")

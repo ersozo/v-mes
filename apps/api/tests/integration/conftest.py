@@ -17,6 +17,7 @@ os.environ.setdefault("JWT_SECRET", "test-secret-" + "x" * 40)
 os.environ.setdefault("ADMIN_USERNAME", "admin")
 os.environ.setdefault("ADMIN_PASSWORD", "AdminPass123")
 os.environ.setdefault("NODERED_ADMIN_PASSWORD", "unused")
+os.environ.setdefault("JOBS_ENABLED", "false")
 assert os.environ.get("MSSQL_DB", "").upper().endswith("_TEST"), "entegrasyon testleri yalnızca *_TEST veritabanında çalışır"
 
 from fastapi.testclient import TestClient  # noqa: E402

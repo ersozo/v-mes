@@ -1,0 +1,46 @@
+# Üretim katmanı:  docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d
+# - Web yalnızca HTTPS (443; 80 → 443 yönlendirme), refresh çerezi Secure
+# - MSSQL, Node-RED editörü, EMQX paneli ve düz MQTT dışarıya kapalı (yalnızca 127.0.0.1 veya iç ağ)
+# - Saha edge'leri broker'a TLS ile bağlanır (8883)
+# - Simülatör çalışmaz (COMPOSE_PROFILES içinde "dev" olmamalı)
+# Sertifikalar: infra/certs/{ca.crt,server.crt,server.key} — bkz. README "TLS".
+
+services:
+  mssql:
+    ports: !override
+      - "127.0.0.1:${MSSQL_PORT:-1433}:1433"
+
+  emqx:
+    environment:
+      EMQX_LISTENERS__SSL__DEFAULT__BIND: "0.0.0.0:8883"
+      EMQX_LISTENERS__SSL__DEFAULT__SSL_OPTIONS__CERTFILE: /opt/mes-certs/server.crt
+      EMQX_LISTENERS__SSL__DEFAULT__SSL_OPTIONS__KEYFILE: /opt/mes-certs/server.key
+      EMQX_LISTENERS__SSL__DEFAULT__SSL_OPTIONS__CACERTFILE: /opt/mes-certs/ca.crt
+    volumes:
+      - ./infra/certs:/opt/mes-certs:ro
+    ports: !override
+      - "8883:8883"
+      - "127.0.0.1:${EMQX_DASHBOARD_PORT:-18083}:18083"
+
+  nodered:
+    volumes:
+      - ./infra/certs/ca.crt:/data/certs/ca.crt:ro
+    ports: !override
+      - "127.0.0.1:${NODERED_PORT:-1880}:1880"
+
+  api:
+    environment:
+      COOKIE_SECURE: "true"
+    ports: !reset []
+
+  ingestion:
+    ports: !reset []
+
+  web:
+    volumes:
+      - ./infra/certs/server.crt:/etc/nginx/certs/server.crt:ro
+      - ./infra/certs/server.key:/etc/nginx/certs/server.key:ro
+    command: ["sh", "-c", "cp /etc/nginx/mes/nginx.tls.conf /etc/nginx/conf.d/default.conf && exec nginx -g 'daemon off;'"]
+    ports: !override
+      - "80:8080"
+      - "443:8443"
