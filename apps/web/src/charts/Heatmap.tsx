@@ -1,4 +1,4 @@
-import { Grid3x3, Table2 } from "lucide-react";
+import { Grid3x3 } from "lucide-react";
 import { Fragment, useState } from "react";
 import type { ChartType } from "../components/ChartCard";
 import { Table } from "../components/ui";
@@ -6,10 +6,9 @@ import { num, pct } from "../lib/format";
 import type { SeriesPoint } from "../lib/types";
 import { TooltipBox } from "./common";
 
-export type HeatmapType = "heatmap" | "table";
+export type HeatmapType = "heatmap";
 export const HEATMAP_TYPES: ChartType<HeatmapType>[] = [
   { value: "heatmap", label: "Isı haritası", icon: <Grid3x3 className="size-3.5" /> },
-  { value: "table", label: "Tablo", icon: <Table2 className="size-3.5" /> },
 ];
 
 /** Sıralı tek ton (mavi) rampa; açık = düşük OEE. Yedi sınıf, %0–100 eşit aralıklı. */
@@ -22,34 +21,35 @@ function colLabel(label: string) {
   return m ? m[1] : label.replace(/^\d{4}-(\d{2})-(\d{2})/, "$2.$1");
 }
 
-export function Heatmap({ series, type }: { series: SeriesPoint[]; type: HeatmapType }) {
-  const [hover, setHover] = useState<{ x: number; y: number; title: string; m: NonNullable<SeriesPoint["machines"]>[number] } | null>(null);
+export function HeatmapTable({ series }: { series: SeriesPoint[] }) {
   const machines = series[0]?.machines ?? [];
-
-  if (type === "table") {
-    return (
-      <Table>
-        <thead>
-          <tr>
-            <th>Makine</th>
+  return (
+    <Table>
+      <thead>
+        <tr>
+          <th>Makine</th>
+          {series.map((s) => (
+            <th key={s.label} className="text-right">{colLabel(s.label)}</th>
+          ))}
+        </tr>
+      </thead>
+      <tbody className="tabular">
+        {machines.map((m, row) => (
+          <tr key={m.machine_id}>
+            <td className="font-medium">{m.code}</td>
             {series.map((s) => (
-              <th key={s.label} className="text-right">{colLabel(s.label)}</th>
+              <td key={s.label} className="text-right">{pct(s.machines?.[row]?.oee, 0)}</td>
             ))}
           </tr>
-        </thead>
-        <tbody className="tabular">
-          {machines.map((m, row) => (
-            <tr key={m.machine_id}>
-              <td className="font-medium">{m.code}</td>
-              {series.map((s) => (
-                <td key={s.label} className="text-right">{pct(s.machines?.[row]?.oee, 0)}</td>
-              ))}
-            </tr>
-          ))}
-        </tbody>
-      </Table>
-    );
-  }
+        ))}
+      </tbody>
+    </Table>
+  );
+}
+
+export function Heatmap({ series }: { series: SeriesPoint[] }) {
+  const [hover, setHover] = useState<{ x: number; y: number; title: string; m: NonNullable<SeriesPoint["machines"]>[number] } | null>(null);
+  const machines = series[0]?.machines ?? [];
 
   return (
     <div className="relative overflow-x-auto px-2" onMouseLeave={() => setHover(null)}>

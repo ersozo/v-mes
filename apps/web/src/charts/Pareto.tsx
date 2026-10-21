@@ -1,4 +1,4 @@
-import { BarChart3, LayoutDashboard, Table2 } from "lucide-react";
+import { BarChart3, LayoutDashboard } from "lucide-react";
 import { Bar, BarChart, Cell, ResponsiveContainer, Tooltip, Treemap, XAxis, YAxis } from "recharts";
 import type { ChartType } from "../components/ChartCard";
 import { CATEGORY_META } from "../components/state";
@@ -7,11 +7,10 @@ import { duration, num, pct } from "../lib/format";
 import type { ParetoReason } from "../lib/types";
 import { axisProps, BAR_MAX, Legend, TooltipBox } from "./common";
 
-export type ParetoType = "bar" | "treemap" | "table";
+export type ParetoType = "bar" | "treemap";
 export const PARETO_TYPES: ChartType<ParetoType>[] = [
   { value: "bar", label: "Pareto", icon: <BarChart3 className="size-3.5 rotate-90" /> },
   { value: "treemap", label: "Ağaç harita", icon: <LayoutDashboard className="size-3.5" /> },
-  { value: "table", label: "Tablo", icon: <Table2 className="size-3.5" /> },
 ];
 
 export function paretoLegend(reasons: ParetoReason[]) {
@@ -69,8 +68,6 @@ export function ParetoTable({ reasons }: { reasons: ParetoReason[] }) {
  * Kümülatif %80'e ulaşan nedenler "vital few" olarak vurgulanır.
  */
 export function Pareto({ reasons, type, onSelect }: { reasons: ParetoReason[]; type: ParetoType; onSelect?: (r: ParetoReason) => void }) {
-  if (type === "table") return <ParetoTable reasons={reasons} />;
-
   if (type === "treemap") {
     const data = reasons.map((r) => ({ ...r, size: r.seconds }));
     return (

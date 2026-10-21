@@ -1,5 +1,5 @@
 // İstasyonlar (darboğaz analizi): seri istasyonlu makinede istasyon başına çalışma oranı ve zaman şeridi.
-import { BarChart3, ChartGantt, Table2 } from "lucide-react";
+import { BarChart3, ChartGantt } from "lucide-react";
 import { Fragment, useState } from "react";
 import { Bar, BarChart, CartesianGrid, Cell, LabelList, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import type { ChartType } from "../components/ChartCard";
@@ -8,11 +8,10 @@ import { duration, num, pct, time } from "../lib/format";
 import type { StationsResponse } from "../lib/types";
 import { axisProps, BAR_MAX, gridProps, pctTick, TooltipBox } from "./common";
 
-export type StationsType = "bar" | "strip" | "table";
+export type StationsType = "bar" | "strip";
 export const STATIONS_TYPES: ChartType<StationsType>[] = [
   { value: "bar", label: "Çalışma oranı", icon: <BarChart3 className="size-3.5 rotate-90" /> },
   { value: "strip", label: "Zaman şeridi", icon: <ChartGantt className="size-3.5" /> },
-  { value: "table", label: "Tablo", icon: <Table2 className="size-3.5" /> },
 ];
 
 /** Sıralı tek ton rampa (ısı haritasıyla aynı); açık = az çalışıyor. */
@@ -25,7 +24,6 @@ const BAR_BOTTLENECK = "var(--series-1)";
 const stationLabel = (n: number) => `${n}. istasyon`;
 
 export function StationsChart({ data, type, pollMs }: { data: StationsResponse; type: StationsType; pollMs: number }) {
-  if (type === "table") return <StationsTable data={data} pollMs={pollMs} />;
   if (type === "strip") return <StationsStrip data={data} />;
 
   const rows = data.stations.map((s) => ({ ...s, name: stationLabel(s.station), ratio: s.run_ratio ?? 0 }));
@@ -148,7 +146,7 @@ function StationsStrip({ data }: { data: StationsResponse }) {
   );
 }
 
-function StationsTable({ data, pollMs }: { data: StationsResponse; pollMs: number }) {
+export function StationsTable({ data, pollMs }: { data: StationsResponse; pollMs: number }) {
   return (
     <Table>
       <thead>

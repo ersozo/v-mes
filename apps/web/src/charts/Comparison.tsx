@@ -1,4 +1,4 @@
-import { BarChart3, Rows3, Table2 } from "lucide-react";
+import { BarChart3, Rows3 } from "lucide-react";
 import { Bar, BarChart, CartesianGrid, LabelList, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import type { ChartType } from "../components/ChartCard";
 import { Table } from "../components/ui";
@@ -6,11 +6,10 @@ import { duration, num, pct } from "../lib/format";
 import type { OeeMetrics } from "../lib/types";
 import { axisProps, BAR_MAX, gridProps, Legend, METRIC_COLORS, METRIC_LABELS, pctTick, TooltipBox } from "./common";
 
-export type ComparisonType = "bar" | "grouped" | "table";
+export type ComparisonType = "bar" | "grouped";
 export const COMPARISON_TYPES: ChartType<ComparisonType>[] = [
   { value: "bar", label: "OEE sıralı", icon: <BarChart3 className="size-3.5 rotate-90" /> },
   { value: "grouped", label: "A / P / Q gruplu", icon: <Rows3 className="size-3.5" /> },
-  { value: "table", label: "Tablo", icon: <Table2 className="size-3.5" /> },
 ];
 
 export type ComparisonRow = OeeMetrics & { key: string | number; name: string };
@@ -53,7 +52,6 @@ export function ComparisonTable({ rows }: { rows: ComparisonRow[] }) {
 }
 
 export function Comparison({ rows, type, onTypeChange }: { rows: ComparisonRow[]; type: ComparisonType; onTypeChange?: (t: ComparisonType) => void }) {
-  if (type === "table") return <ComparisonTable rows={rows} />;
   // "OEE sıralı" görünümünde OEE'si hesaplanamayanlar çubuk olarak çizilmez (sıfırla karışmasın), altta nedeniyle listelenir.
   const missing = type === "bar" ? rows.filter((r) => r.oee === null) : [];
   const plotted = type === "bar" ? [...rows].filter((r) => r.oee !== null).sort((a, b) => (b.oee ?? 0) - (a.oee ?? 0)) : rows;

@@ -40,7 +40,9 @@ test.describe("canlı izleme", () => {
     await expect(page.getByRole("heading", { name: "İstasyonlar" })).toBeVisible();
     await page.getByRole("radio", { name: "Son 24 saat" }).click();
     await expect(page.getByText("5. istasyon").first()).toBeVisible({ timeout: 20_000 });
-    await page.getByRole("radio", { name: "Tablo" }).last().click();
+    const card = page.locator("div.rounded-xl", { has: page.getByRole("heading", { name: "İstasyonlar" }) });
+    await card.getByRole("radio", { name: "Zaman şeridi" }).click();
+    await card.getByRole("button", { name: "Tablo görünümü" }).click();
     await expect(page.getByRole("cell", { name: "ist3_kosu" })).toBeVisible();
     // İstasyon bitleri tek tek telemetri grafiği olarak gösterilmez
     await expect(page.getByRole("heading", { name: "ist1_kosu" })).toHaveCount(0);
@@ -64,7 +66,8 @@ test.describe("operatör", () => {
     const before = await page.getByRole("button", { name: "Neden gir" }).count();
     await page.getByRole("button", { name: "Neden gir" }).first().click();
     await page.getByRole("button", { name: "Malzeme bekleme" }).click();
-    await page.getByRole("button", { name: "Kaydet" }).click();
+    // Elle hurda girilen makinede sayfada ayrıca hurda "Kaydet" butonu var
+    await page.getByRole("dialog").getByRole("button", { name: "Kaydet" }).click();
     await expect(page.getByRole("button", { name: "Neden gir" })).toHaveCount(before - 1);
   });
 });
@@ -138,10 +141,29 @@ test.describe("raporlar", () => {
     await production.getByRole("button", { name: "Tablo görünümü" }).click();
     await expect(production.getByRole("columnheader", { name: "Dönem" })).toBeVisible();
 
+    // Tablo yalnızca kart ikonundan açılır; tür seçicide ikinci bir "Tablo" yok
+    await expect(page.getByRole("radiogroup", { name: "Duruş nedenleri grafik türü" }).getByRole("radio", { name: "Tablo" })).toHaveCount(0);
+    await page.getByRole("radiogroup", { name: "Kayıp şelalesi grafik türü" }).getByRole("radio", { name: "Halka" }).click();
+    await expect(page).toHaveURL(/losses\.type=donut/);
+
     await page.getByRole("button", { name: /Tema:/ }).click(); // sistem → açık
     await page.getByRole("button", { name: /Tema:/ }).click(); // açık → koyu
     await expect(page.locator("html")).toHaveAttribute("data-theme", "dark");
     await page.getByRole("button", { name: /Tema:/ }).click(); // koyu → sistem
+  });
+});
+
+test.describe("yan panel", () => {
+  test("masaüstünde daraltılır, tercih saklanır, menü bağlantıları erişilebilir kalır", async ({ page }) => {
+    await login(page);
+    await page.getByRole("button", { name: "Menüyü daralt" }).click();
+    await expect(page.getByRole("button", { name: "Menüyü genişlet" })).toHaveAttribute("aria-expanded", "false");
+    await page.reload();
+    await expect(page.getByRole("button", { name: "Menüyü genişlet" })).toBeVisible();
+    await page.getByRole("link", { name: "Raporlar" }).click();
+    await expect(page).toHaveURL(/\/reports/);
+    await page.keyboard.press("[");
+    await expect(page.getByRole("button", { name: "Menüyü daralt" })).toBeVisible();
   });
 });
 

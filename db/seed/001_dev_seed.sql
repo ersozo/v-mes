@@ -121,6 +121,25 @@ JOIN dbo.products p ON p.code = v.product_code
 JOIN dbo.machines m ON m.code = v.machine_code
 WHERE NOT EXISTS (SELECT 1 FROM dbo.product_machine_rates r WHERE r.product_id = p.id AND r.machine_id = m.id);
 
+-- Çalışan iş emirleri (performans hesabı için ideal çevrim süresi gerekir).
+-- Hiç iş emri olmayan makineye; makinenin oluşturulmasından beri çalışıyor sayılır.
+DECLARE @orders TABLE (id int, machine_id int, start_ts datetime2(3));
+INSERT INTO dbo.production_orders (order_no, product_id, machine_id, target_qty, status, started_at)
+OUTPUT inserted.id, inserted.machine_id, inserted.started_at INTO @orders
+SELECT 'IE-DEV-' + m.code, p.id, m.id, v.target, 'running', m.created_at
+FROM (VALUES
+    ('cnc-01',    'mil-a100',  5000),
+    ('cnc-02',    'flans-b20', 5000),
+    ('pres-01',   'braket-c5', 100000),
+    ('montaj-01', 'govde-d7',  20000)
+) v (machine_code, product_code, target)
+JOIN dbo.machines m ON m.code = v.machine_code
+JOIN dbo.products p ON p.code = v.product_code
+WHERE NOT EXISTS (SELECT 1 FROM dbo.production_orders o WHERE o.machine_id = m.id);
+
+INSERT INTO dbo.production_order_runs (production_order_id, machine_id, start_ts)
+SELECT id, machine_id, start_ts FROM @orders;
+
 -- Duruş nedenleri
 INSERT INTO dbo.downtime_reasons (code, name, category, sort_order)
 SELECT v.code, v.name, v.category, v.sort_order FROM (VALUES

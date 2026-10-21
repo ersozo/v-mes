@@ -8,7 +8,7 @@ import { OeeTiles } from "../components/figures";
 import { CategoryTag, StateBadge } from "../components/state";
 import { Button, Card, ErrorBox, PageHeader, Segmented, Spinner, Table } from "../components/ui";
 import { Gantt, ganttLegend } from "../charts/Gantt";
-import { STATIONS_TYPES, StationsChart, type StationsType } from "../charts/Stations";
+import { STATIONS_TYPES, StationsChart, StationsTable, type StationsType } from "../charts/Stations";
 import { TELEMETRY_TYPES, TelemetryChart, type TelemetryPoint, type TelemetryType } from "../charts/Telemetry";
 import { api } from "../lib/api";
 import { can, useAuth } from "../lib/auth";
@@ -175,6 +175,7 @@ function StationsCard({ machineId, pollMs }: { machineId: number; pollMs: number
         loading={stations.isLoading}
         error={stations.error}
         empty={!stations.data?.stations.some((s) => s.samples > 0)}
+        table={() => stations.data && <StationsTable data={stations.data} pollMs={pollMs} />}
       >
         {(t) => stations.data && <StationsChart data={stations.data} type={t} pollMs={pollMs} />}
       </ChartCard>

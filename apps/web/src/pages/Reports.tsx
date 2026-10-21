@@ -8,11 +8,11 @@ import { CategoryTag } from "../components/state";
 import { Dialog, PageHeader, Table } from "../components/ui";
 import { COMPARISON_TYPES, Comparison, ComparisonTable, comparisonLegend, type ComparisonRow, type ComparisonType } from "../charts/Comparison";
 import { Gantt, ganttLegend } from "../charts/Gantt";
-import { HEATMAP_TYPES, Heatmap, type HeatmapType } from "../charts/Heatmap";
+import { HEATMAP_TYPES, Heatmap, HeatmapTable, type HeatmapType } from "../charts/Heatmap";
 import { OeeTrend, TREND_TYPES, trendLegend, type TrendType } from "../charts/OeeTrend";
 import { PARETO_TYPES, Pareto, ParetoTable, paretoLegend, type ParetoType } from "../charts/Pareto";
 import { PRODUCTION_TYPES, Production, productionLegend, type ProductionType } from "../charts/Production";
-import { WATERFALL_TYPES, Waterfall, waterfallLegend, type WaterfallType } from "../charts/Waterfall";
+import { WATERFALL_TYPES, Waterfall, WaterfallTable, type WaterfallType } from "../charts/Waterfall";
 import { api } from "../lib/api";
 import { dateTime, duration, num, pct, time } from "../lib/format";
 import type { Downtime, OeeMetrics, OeeResponse, ParetoReason, ParetoResponse, ProductionResponse, TimelineResponse } from "../lib/types";
@@ -142,7 +142,7 @@ export function ReportsPage() {
           error={oee.error}
           empty={!s || s.planned_seconds <= 0}
           emptyText="Seçilen aralıkta planlı üretim süresi yok"
-          legend={waterfallLegend}
+          table={() => s && <WaterfallTable metrics={s} />}
         >
           {(t) => s && <Waterfall metrics={s} type={t} />}
         </ChartCard>
@@ -203,8 +203,9 @@ export function ReportsPage() {
             loading={heat.isFetching}
             error={heat.error}
             empty={!heat.data?.series.length || !heat.data.series[0]?.machines?.length}
+            table={() => <HeatmapTable series={heat.data?.series ?? []} />}
           >
-            {(t) => <Heatmap series={heat.data?.series ?? []} type={t} />}
+            {() => <Heatmap series={heat.data?.series ?? []} />}
           </ChartCard>
         )}
 

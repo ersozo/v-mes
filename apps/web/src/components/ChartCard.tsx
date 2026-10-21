@@ -44,7 +44,9 @@ export function ChartCard<T extends string>({
 }) {
   // Seçim URL'de (paylaşılabilir) ve kullanıcı tercihi olarak saklanır.
   const fallback = (readPref(`chart:${id}`) as T | null) ?? defaultType ?? ("" as T);
-  const [type, setType] = useUrlState<T>(`${id}.type`, types?.some((t) => t.value === fallback) ? fallback : (defaultType ?? ("" as T)));
+  const [rawType, setType] = useUrlState<T>(`${id}.type`, types?.some((t) => t.value === fallback) ? fallback : (defaultType ?? ("" as T)));
+  // Paylaşılan bağlantıda artık olmayan bir tür (ör. eski "table") varsayılana düşer
+  const type = !types || types.some((t) => t.value === rawType) ? rawType : (defaultType ?? types[0]!.value);
   const [showTable, setShowTable] = useState(false);
   const [full, setFull] = useState(false);
 
