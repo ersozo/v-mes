@@ -2,7 +2,9 @@
 
 Bu rehber V-MES'i kurumsal ağdaki bir **Windows sanal makinede, WSL2 (Ubuntu) içinde Docker ile** 7/24 çalışacak şekilde kurar. Genel bilgi ve komutlar için [README](../README.md), mimari için [ARCHITECTURE](../ARCHITECTURE.md).
 
-> **Linux sanal makine kullanabiliyorsanız tercih edin.** Aşağıdaki adımların yaklaşık yarısı (iç içe sanallaştırma, açılışta otomatik başlatma, boşta kapanma, ağ yönlendirme) WSL'e özgüdür; doğrudan Ubuntu Server bir sanal makinede bunların hiçbiri gerekmez ve README'deki "Üretim kurulumu" yeterlidir.
+> **Linux sanal makine kullanabiliyorsanız tercih edin:** [KURULUM-UBUNTU.md](KURULUM-UBUNTU.md). Aşağıdaki adımların yaklaşık yarısı (iç içe sanallaştırma, açılışta otomatik başlatma, boşta kapanma, ağ yönlendirme) WSL'e özgüdür.
+>
+> **Not:** Üretim katmanı MQTT'yi yalnızca TLS (8883) ile dışarı açar; bu rehberde geçen 1883 seçenekleri üretimde geçerli değildir. HUBBOX ayarları için Ubuntu rehberinin §6.1'ine bakın (`FLOW_MQTT_TLS=true`, her HUBBOX'ta `ca.crt`). Yedek klasörü sahipliği de aynı şekilde gereklidir (Ubuntu rehberi §5.4).
 
 ---
 

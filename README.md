@@ -9,7 +9,7 @@ PLC (S7-1200/1500) → Node-RED (edge) → EMQX (MQTT) → Ingestion → MS SQL 
 ```
 
 Mimari kararlar, veri modeli ve OEE hesaplama kuralları: **[ARCHITECTURE.md](ARCHITECTURE.md)**.
-Windows sanal makine + WSL2 üzerine adım adım kurulum: **[docs/KURULUM-WSL.md](docs/KURULUM-WSL.md)**.
+Ubuntu Server sanal makineye adım adım kurulum: **[docs/KURULUM-UBUNTU.md](docs/KURULUM-UBUNTU.md)** (Windows + WSL2 için: [docs/KURULUM-WSL.md](docs/KURULUM-WSL.md)).
 Yeni makine (ve HUBBOX) ekleme iş akışı: **[docs/YENI-MAKINE-EKLEME.md](docs/YENI-MAKINE-EKLEME.md)**.
 
 ---
@@ -227,7 +227,7 @@ make backup                                          # ./backups/MES_DB_<zaman>.
 scripts/restore.sh backups/MES_DB_20261019_020000.bak --yes   # MEVCUT VERİTABANININ ÜZERİNE YAZAR
 ```
 
-Yedeklemeyi günlük zamanlayın (ör. cron: `0 3 * * * cd /opt/v-mes && ./scripts/backup.sh`) ve `./backups` klasörünü sunucu dışına kopyalayın. Geri yükleme sırasında API ve ingestion durdurulur; bu sürede MQTT'de bekleyen QoS 1 mesajlar ingestion açıldığında işlenir.
+Linux sunucuda `backups` klasörü MSSQL konteynerinin kullanıcısına ait olmalıdır (`sudo chown 10001:10001 backups`). Yedeklemeyi günlük zamanlayın (root cron: `0 3 * * * cd /opt/v-mes && ./scripts/backup.sh`) ve `./backups` klasörünü sunucu dışına kopyalayın. Geri yükleme sırasında API ve ingestion durdurulur; bu sürede MQTT'de bekleyen QoS 1 mesajlar ingestion açıldığında işlenir.
 
 ### Loglar
 
