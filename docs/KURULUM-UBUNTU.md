@@ -281,6 +281,10 @@ Elle denemek için: `sudo ./scripts/backup.sh` (§5.4'teki klasör sahipliği ya
 
 `backup.sh` yedeği doğrular ve `BACKUP_KEEP_DAYS`'ten (varsayılan 14) eski yerel yedekleri siler; paylaşımdaki kopyaların saklama süresini dosya sunucusu tarafında belirleyin.
 
+Veritabanı **SIMPLE recovery model**'de çalışır (migration aracı her çalıştığında ayarlar): geri dönüş noktası son gece yedeğidir ve log dosyası büyümez. Saat bazında geri dönüş gerekiyorsa `MSSQL_RECOVERY_MODEL=FULL` ile birlikte düzenli **log yedeği** de kurulmalıdır; log yedeği olmadan FULL modelde log dosyası diski doldurur.
+
+**Boyut tahmini** (columnstore sıkıştırmasıyla ~6 bayt/satır, 1 sn okuma, 180 gün saklama): tag başına ~90 MB; 15 tag'li bir makine ~1,4 GB'ta sabitlenir (eski ham telemetri her gece silinir). `MSSQL_PID=Express` 10 GB veritabanı sınırı yaklaşık 6–7 böyle makineye karşılık gelir.
+
 Geri yükleme: README → "Yedekleme ve geri yükleme". **Geri yüklemeyi kurulumdan sonra bir kez deneyin** (bkz. §9).
 
 ## 8. Güncellemeler ve yeniden başlatma
@@ -334,4 +338,4 @@ Kurulumu teslim almadan önce:
 | Makine "Bağlantı yok", HUBBOX'ta veri var | HUBBOX → sunucu:8883 erişimi; `FLOW_MQTT_HOST` HUBBOX'tan erişilebilen adres mi ve sertifikanın SAN'ında mı? HUBBOX'ta `FLOW_MQTT_CA_FILE` yolunda `ca.crt` var mı? HUBBOX Node-RED loglarında TLS hatası. EMQX panelinde (SSH tüneliyle, §4) istemci listesi |
 | Arayüzde "Edge saati kaymış" | HUBBOX'ın NTP ayarı |
 | Sunucu saati kaymış | `timedatectl`; NTP sunucusu (§2.3) erişilebilir mi (UDP 123) |
-| Disk doluyor | `docker system df`; ham telemetri saklama süresi (Tanımlar → Fabrika ayarları); `backups/` içindeki eski yedekler (`BACKUP_KEEP_DAYS`) |
+| Disk doluyor | Veritabanı log dosyası büyük mü (`MSSQL_RECOVERY_MODEL`, §7); `docker system df`; ham telemetri saklama süresi (Tanımlar → Fabrika ayarları); `backups/` içindeki eski yedekler (`BACKUP_KEEP_DAYS`) |

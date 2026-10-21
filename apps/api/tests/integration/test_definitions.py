@@ -52,3 +52,10 @@ def test_settings(client, admin):
     r = client.patch("/api/settings", headers=admin, json={"timezone": "Europe/Istanbul", "min_downtime_seconds": 90})
     assert r.status_code == 200 and r.json()["min_downtime_seconds"] == 90
     client.patch("/api/settings", headers=admin, json={"min_downtime_seconds": 60})
+
+
+def test_database_uses_simple_recovery(db):
+    # Gece tam yedek alınır; FULL modelde log yedeği olmadan log dosyası sınırsız büyür (db/migrate.py)
+    with db.cursor() as cur:
+        cur.execute("SELECT recovery_model_desc AS m FROM sys.databases WHERE name = DB_NAME()")
+        assert cur.fetchone()["m"] == "SIMPLE"

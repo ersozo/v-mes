@@ -77,7 +77,27 @@ def ensure_database(db_name: str) -> None:
             print(f"[migrate] veritabanı oluşturuluyor: {db_name}")
             cur.execute(f"CREATE DATABASE [{db_name}]")
             cur.execute(f"ALTER DATABASE [{db_name}] SET READ_COMMITTED_SNAPSHOT ON WITH ROLLBACK IMMEDIATE")
+        ensure_recovery_model(cur, db_name)
     conn.close()
+
+
+def ensure_recovery_model(cur: pymssql.Cursor, db_name: str) -> None:
+    """Recovery model'i MSSQL_RECOVERY_MODEL'e (varsayılan SIMPLE) getirir.
+
+    Yedekleme her gece tam yedektir; FULL modelde log yedeği alınmazsa log dosyası sınırsız büyür.
+    FULL'dan geçişte log dosyası bir kez küçültülür. ALTER DATABASE transaction içinde çalışamaz (autocommit gerekir).
+    """
+    model = os.environ.get("MSSQL_RECOVERY_MODEL", "SIMPLE").upper()
+    if model not in ("SIMPLE", "FULL"):
+        sys.exit("[migrate] MSSQL_RECOVERY_MODEL yalnızca SIMPLE veya FULL olabilir")
+    cur.execute("SELECT recovery_model_desc FROM sys.databases WHERE name = %s", (db_name,))
+    current = cur.fetchone()[0]
+    if current == model:
+        return
+    print(f"[migrate] recovery model: {current} → {model}")
+    cur.execute(f"ALTER DATABASE [{db_name}] SET RECOVERY {model}")
+    if model == "SIMPLE":
+        cur.execute(f"USE [{db_name}]; CHECKPOINT; DBCC SHRINKFILE (2, 64) WITH NO_INFOMSGS; USE [master];")
 
 
 def ensure_migrations_table(conn: pymssql.Connection) -> None:
