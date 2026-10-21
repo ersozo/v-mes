@@ -1,8 +1,10 @@
 import random
 
+import pytest
+
 from snap7 import util
 
-from simulator.model import DB_SIZE, DINT_MAX, MachineConfig, MachineModel, ProcessSignal
+from simulator.model import DB_SIZE, DINT_MAX, OFFSET_STATIONS, MachineConfig, MachineModel, ProcessSignal, StationLine
 
 
 def make(**overrides) -> MachineModel:
@@ -84,3 +86,32 @@ def test_process_signal_respects_min_value():
     sig = ProcessSignal("load", running_value=0, idle_value=0, noise=5, min_value=0)
     rng = random.Random(3)
     assert all(sig.step(0.1, False, rng) >= 0 for _ in range(500))
+
+
+def test_station_line_bottleneck_runs_longest_and_sets_throughput():
+    line = StationLine([10, 20, 12], jitter=0)
+    rng = random.Random(1)
+    run_time = [0.0, 0.0, 0.0]
+    out = 0
+    for _ in range(36_000):              # 1 saat, dt = 0.1
+        out += line.step(0.1, True, rng)
+        for i, on in enumerate(line.running):
+            run_time[i] += 0.1 if on else 0.0
+    # Hattın hızı en yavaş istasyon (20 sn): saatte ~180 parça; darboğaz neredeyse sürekli çalışır
+    assert 175 <= out <= 181
+    assert run_time[1] / 3600 > 0.97
+    assert run_time[0] / 3600 == pytest.approx(0.5, abs=0.02) and run_time[2] / 3600 == pytest.approx(0.6, abs=0.02)
+
+
+def test_station_line_stops_with_machine_and_writes_bits():
+    m = make(station_cycles=[5.0, 8.0])
+    m.stations = StationLine([5.0, 8.0], jitter=0)
+    run(m, 60)
+    assert m.total_count > 1000
+    db = bytearray(DB_SIZE)
+    m.write_db(db)
+    assert util.get_bool(db, OFFSET_STATIONS, 1) == m.stations.running[1]
+    m.force_stop(None)
+    run(m, 1)
+    m.write_db(db)
+    assert not any(m.stations.running) and not util.get_bool(db, OFFSET_STATIONS, 0) and not util.get_bool(db, OFFSET_STATIONS, 1)

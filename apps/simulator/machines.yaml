@@ -38,3 +38,15 @@ machines:
     process:
       - { name: oil_pressure, running_value: 182, idle_value: 160, noise: 1.5, tau_seconds: 20 }
       - { name: tonnage, running_value: 48, idle_value: 0, noise: 2, tau_seconds: 2, min_value: 0 }
+
+  # Seri istasyonlu montaj hattı (darboğaz analizi için): adet son istasyondan çıkan parçalardır.
+  # 3. istasyon en yavaşı → darboğaz; hattın hızı ~22 sn/parça.
+  - code: montaj-01
+    port: 10204
+    ideal_cycle_seconds: 20     # govde-d7
+    scrap_rate: 0.01
+    mtbf_minutes: 30
+    mean_stop_minutes: 4
+    micro_stops_per_hour: 4
+    initial_count: 41200
+    station_cycles: [16, 18, 22, 17, 15]

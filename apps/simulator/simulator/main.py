@@ -85,6 +85,7 @@ class SimulatedPlc:
             "total_count": m.total_count,
             "scrap_count": m.scrap_count,
             "process": [round(v, 2) for v in m.process_values],
+            **({"stations_running": m.stations.running} if m.stations else {}),
         }
 
 

@@ -16,6 +16,7 @@ interface ImportRow {
   supported: boolean;
   note: string | null;
   suggested_role: "process" | "total_count_candidate" | "scrap_count_candidate" | "running_candidate";
+  suggested_station: number | null;
 }
 
 interface ImportResult {
@@ -44,6 +45,7 @@ interface Draft {
   name: string;
   role: TagRole;
   unit: string;
+  station: string;
 }
 
 export function ImportTagsDialog({ open, onClose, onImport, existing }: { open: boolean; onClose: () => void; onImport: (tags: Tag[], mode: "append" | "replace") => void; existing: Tag[] }) {
@@ -63,7 +65,7 @@ export function ImportTagsDialog({ open, onClose, onImport, existing }: { open: 
       return api<ImportResult>("/api/plc/import", { method: "POST", body: fd });
     },
     onSuccess: (r) => {
-      setDrafts(Object.fromEntries(r.rows.map((row) => [row.line, { selected: false, name: row.name, role: "process" as TagRole, unit: "" }])));
+      setDrafts(Object.fromEntries(r.rows.map((row) => [row.line, { selected: false, name: row.name, role: "process" as TagRole, unit: "", station: row.suggested_station ? String(row.suggested_station) : "" }])));
       if (r.db_number && !db) setDb(String(r.db_number));
     },
   });
@@ -88,7 +90,13 @@ export function ImportTagsDialog({ open, onClose, onImport, existing }: { open: 
   }, [chosen, drafts, existing, mode]);
 
   const commit = () => {
-    onImport(chosen.map((r) => ({ name: drafts[r.line]!.name, address: r.address!, role: drafts[r.line]!.role, unit: drafts[r.line]!.unit || null })), mode);
+    onImport(
+      chosen.map((r) => {
+        const d = drafts[r.line]!;
+        return { name: d.name, address: r.address!, role: d.role, unit: d.unit || null, ...(d.station ? { station: Number(d.station), station_signal: "running" as const } : {}) };
+      }),
+      mode,
+    );
     onClose();
   };
 
@@ -136,7 +144,7 @@ export function ImportTagsDialog({ open, onClose, onImport, existing }: { open: 
             <div className="max-h-[50vh] overflow-auto rounded-lg border border-line">
               <Table>
                 <thead className="sticky top-0 bg-surface">
-                  <tr><th /><th>TIA yolu</th><th>Tip</th><th>Adres</th><th>Tag adı</th><th>Rol</th><th>Birim</th></tr>
+                  <tr><th /><th>TIA yolu</th><th>Tip</th><th>Adres</th><th>Tag adı</th><th>Rol</th><th>Birim</th><th title="Koşu biti ise istasyon numarası (darboğaz analizi)">İstasyon</th></tr>
                 </thead>
                 <tbody>
                   {rows.map((r) => {
@@ -159,6 +167,7 @@ export function ImportTagsDialog({ open, onClose, onImport, existing }: { open: 
                           </Select>
                         </td>
                         <td><Input className="h-8 w-16" value={d.unit} disabled={!r.supported} onChange={(e) => setDraft(r.line, { unit: e.target.value })} aria-label="Birim" /></td>
+                        <td><Input className="h-8 w-14" inputMode="numeric" placeholder="—" value={d.station} disabled={!r.supported || r.tia_type?.toLowerCase() !== "bool"} onChange={(e) => setDraft(r.line, { station: e.target.value.replace(/\D/g, "").slice(0, 2) })} aria-label="İstasyon numarası" /></td>
                       </tr>
                     );
                   })}
@@ -166,7 +175,7 @@ export function ImportTagsDialog({ open, onClose, onImport, existing }: { open: 
               </Table>
             </div>
             {nameClash.size > 0 && <p className="text-[13px] text-danger">Aynı tag adı birden fazla kez kullanılıyor: {[...nameClash].join(", ")}</p>}
-            <p className="text-[12px] text-muted">Toplam sayaç, hurda sayacı, çalışıyor bit'i ve durum kodu rolleri yalnızca bir tag'e atanabilir. Aktarılan tag'ler kaydetmeden önce doğrulanır.</p>
+            <p className="text-[12px] text-muted">Toplam sayaç, hurda sayacı, çalışıyor bit'i ve durum kodu rolleri yalnızca bir tag'e atanabilir. İstasyon numarası verilen koşu bitleri makine detayındaki "İstasyonlar" (darboğaz) analizinde kullanılır; istasyon bilgisi rolden bağımsızdır. Aktarılan tag'ler kaydetmeden önce doğrulanır.</p>
           </>
         )}
       </div>

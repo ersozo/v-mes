@@ -48,7 +48,7 @@ make flows-deploy             # Node-RED akışlarını üret ve dağıt (simül
 
 Ardından **http://localhost:8080** adresinden `.env` içindeki `ADMIN_USERNAME` / `ADMIN_PASSWORD` ile giriş yapın.
 
-`.env.example` içindeki `COMPOSE_PROFILES=dev` satırı **simülatörü** de başlatır: üç sanal S7 PLC'si (2 CNC + 1 pres) gerçek S7 protokolüyle veri üretir; rastgele duruşlar, mikro duruşlar, hurda ve hız kayıpları içerir.
+`.env.example` içindeki `COMPOSE_PROFILES=dev` satırı **simülatörü** de başlatır: dört sanal S7 PLC'si (2 CNC, 1 pres, 1 seri istasyonlu montaj hattı) gerçek S7 protokolüyle veri üretir; rastgele duruşlar, mikro duruşlar, hurda ve hız kayıpları içerir. Montaj hattının 5 istasyonu var ve 3. istasyon en yavaşı; makine detayındaki **İstasyonlar** (darboğaz) kartı bunu göstermelidir.
 
 > **Aynı makinede başka bir Docker projesi varsa** port çakışmalarını önlemek için `.env` içinde `*_PORT` değerlerini değiştirin. Compose proje adı `v-mes-2`'dir; değiştirmeyin.
 

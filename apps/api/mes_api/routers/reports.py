@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import csv
 import io
+import json
 from collections import defaultdict
 from datetime import datetime, timedelta
 from typing import Literal
@@ -12,13 +13,14 @@ import pymssql
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from fastapi.responses import StreamingResponse
 
-from mes_api.db import fetch_all
+from mes_api.db import fetch_all, fetch_one
 from mes_api.deps import any_user, get_db
 from mes_api.oee import intervals as iv
 from mes_api.oee.calendar import planned_windows, shift_instances
 from mes_api.oee.engine import OeeResult, compute, periods
 from mes_api.oee.repository import MachineInfo, load_machine_data, load_shifts, plant_timezone, resolve_machines
 from mes_api.oee.window import iso, resolve_window, utcnow
+from mes_api.plc import TagDefinition
 
 router = APIRouter(prefix="/api", tags=["reports"], dependencies=[Depends(any_user)])
 
@@ -279,6 +281,69 @@ def telemetry(machine_id: int, tags: str = Query(description="virgülle ayrılm�
     for r in rows:
         series[r["tag_name"]].append({"ts": iso(r["bucket_ts"]), "avg": r["avg"], "min": r["min"], "max": r["max"], "n": r["n"]})
     return {"window": {"from": iso(start), "to": iso(end), "label": label}, "bucket_seconds": bucket, "series": series}
+
+
+# --- İstasyonlar (darboğaz analizi) ---------------------------------------------------------
+
+@router.get("/reports/stations")
+def stations(machine_id: int, from_: str | None = Query(default=None, alias="from"), to: str | None = None,
+             preset: str | None = None, max_buckets: int = Query(default=96, ge=10, le=500),
+             conn: pymssql.Connection = Depends(get_db)) -> dict:
+    """Seri istasyonlu makinede istasyon başına çalışma oranı ve zaman kovaları.
+
+    Telemetri her okuma döngüsünde (değişmese de) yazıldığından, koşu bitinin 1 olduğu örneklerin
+    oranı istasyonun çalıştığı sürenin oranıdır. En yüksek oranlı istasyon darboğaz adayıdır:
+    seri hatta en yavaş istasyon en uzun çalışır, diğerleri onu bekler.
+    """
+    row = fetch_one(conn, """
+        SELECT m.id, c.tags_json FROM dbo.machines m
+        LEFT JOIN dbo.machine_plc_configs c ON c.machine_id = m.id WHERE m.id = %s""", (machine_id,))
+    if row is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Makine bulunamadı")
+    tags = [TagDefinition(**t) for t in json.loads(row["tags_json"] or "[]")]
+    station_tags = sorted((t.station, t.name) for t in tags if t.station is not None and t.station_signal == "running")
+
+    tz = plant_timezone(conn)
+    now = utcnow()
+    start, end, label = resolve_window(preset, from_, to, tz, load_shifts(conn), now)
+    end = max(start, min(end, now))   # gelecek boş kova üretmesin
+    window = {"from": iso(start), "to": iso(end), "label": label}
+    span = max(1, int((end - start).total_seconds()))
+    bucket = max(1, -(-span // max_buckets))
+    if not station_tags:
+        return {"window": window, "bucket_seconds": bucket, "stations": [], "bottleneck_station": None}
+
+    names = [n for _, n in station_tags]
+    placeholders = ", ".join(["%s"] * len(names))
+    rows = fetch_all(conn, f"""
+        SELECT tag_name,
+               DATEADD(second, (DATEDIFF_BIG(second, %s, ts) / %s) * %s, %s) AS bucket_ts,
+               SUM(CASE WHEN value <> 0 THEN 1 ELSE 0 END) AS run_n, COUNT(*) AS n
+        FROM dbo.machine_telemetry
+        WHERE machine_id = %s AND tag_name IN ({placeholders}) AND ts >= %s AND ts < %s
+        GROUP BY tag_name, DATEADD(second, (DATEDIFF_BIG(second, %s, ts) / %s) * %s, %s)
+        ORDER BY tag_name, bucket_ts""",
+        (start, bucket, bucket, start, machine_id, *names, start, end, start, bucket, bucket, start))
+    by_tag: dict[str, list[dict]] = defaultdict(list)
+    for r in rows:
+        by_tag[r["tag_name"]].append(r)
+
+    out = []
+    for station, name in station_tags:
+        buckets = by_tag.get(name, [])
+        run_n = sum(b["run_n"] for b in buckets)
+        n = sum(b["n"] for b in buckets)
+        out.append({
+            "station": station,
+            "tag": name,
+            "run_ratio": run_n / n if n else None,
+            "samples": n,
+            "buckets": [{"ts": iso(b["bucket_ts"]), "run_ratio": b["run_n"] / b["n"], "samples": b["n"]} for b in buckets],
+        })
+    # Tek istasyonda ya da hiç çalışma yokken "darboğaz" anlamsız
+    measured = [s for s in out if s["run_ratio"]]
+    bottleneck = max(measured, key=lambda s: s["run_ratio"])["station"] if len(measured) >= 2 else None
+    return {"window": window, "bucket_seconds": bucket, "stations": out, "bottleneck_station": bottleneck}
 
 
 # --- Canlı vardiya özeti (operatör ekranı / canlı panel) --------------------------------------

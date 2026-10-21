@@ -37,6 +37,13 @@ _ROLE_TYPES: dict[str, set[str]] = {
     "process": {"X", "BYTE", "INT", "WORD", "DINT", "DWORD", "REAL"},
 }
 
+# İstasyon sinyalleri: seri istasyonlu makinelerde istasyon bazlı (darboğaz) analiz için.
+# Rolden bağımsızdır (ör. son istasyonun koşu biti aynı zamanda makinenin "running" tag'i olabilir);
+# istasyon bilgisi OEE hesabını etkilemez.
+StationSignal = Literal["running"]
+_STATION_SIGNAL_TYPES: dict[str, set[str]] = {"running": {"X"}}
+MAX_STATION = 99
+
 
 @dataclass(frozen=True)
 class S7Address:
@@ -88,6 +95,8 @@ class TagDefinition(BaseModel):
     address: str
     role: TagRole
     unit: str | None = Field(default=None, max_length=16)
+    station: int | None = Field(default=None, ge=1, le=MAX_STATION)
+    station_signal: StationSignal | None = None
 
     @field_validator("name")
     @classmethod
@@ -104,6 +113,14 @@ class TagDefinition(BaseModel):
             raise ValueError(
                 f'"{self.role}" rolü için {addr.type} tipi uygun değil. Uygun tipler: {", ".join(sorted(allowed))}'
             )
+        if (self.station is None) != (self.station_signal is None):
+            raise ValueError("istasyon numarası ve istasyon sinyali birlikte verilmeli")
+        if self.station_signal is not None:
+            types = _STATION_SIGNAL_TYPES[self.station_signal]
+            if addr.type not in types:
+                raise ValueError(
+                    f'"{self.station_signal}" istasyon sinyali için {addr.type} tipi uygun değil. Uygun tipler: {", ".join(sorted(types))}'
+                )
         # Kanonik biçimde sakla: "db1,di4" → "DB1,DINT4"
         self.address = addr.format()
         return self
@@ -116,7 +133,13 @@ def validate_tag_list(tags: list[TagDefinition]) -> list[TagDefinition]:
         raise ValueError("en fazla 256 tag")
     names: set[str] = set()
     roles: set[str] = set()
+    station_signals: set[tuple[int, str]] = set()
     for t in tags:
+        if t.station is not None and t.station_signal is not None:
+            key = (t.station, t.station_signal)
+            if key in station_signals:
+                raise ValueError(f'{t.station}. istasyonun "{t.station_signal}" sinyali birden fazla kez tanımlanmış')
+            station_signals.add(key)
         if t.name in names:
             raise ValueError(f'"{t.name}" adı birden fazla kez kullanılmış')
         names.add(t.name)

@@ -122,3 +122,38 @@ def test_window_validation_and_presets(client, users, isolated_shift):
     assert client.get("/api/oee?preset=bogus", headers=users["viewer"]).status_code == 422
     assert client.get("/api/oee?scope=machine&preset=today", headers=users["viewer"]).status_code == 422
     assert client.get("/api/oee/live", headers=users["viewer"]).status_code == 200
+
+
+def test_stations_run_ratio_and_bottleneck(client, admin, users, db):
+    tags = [{"name": "total_count", "address": "DB200,WORD956", "role": "total_count"},
+            {"name": "ist1_kosu", "address": "DB200,X892.2", "role": "process", "station": 1, "station_signal": "running"},
+            {"name": "ist2_kosu", "address": "DB200,X902.2", "role": "process", "station": 2, "station_signal": "running"},
+            {"name": "ist3_kosu", "address": "DB200,X912.2", "role": "running", "station": 3, "station_signal": "running"},
+            {"name": "temp", "address": "DB200,REAL0", "role": "process"}]
+    m = make_line_and_machine(client, admin, state_source="tag",
+                              plc={"host": "10.0.0.5", "port": 102, "rack": 0, "slot": 1, "poll_ms": 1000, "tags": tags})
+    saved = client.get(f"/api/machines/{m['id']}", headers=admin).json()["plc"]["tags"]
+    assert {t["name"]: t.get("station") for t in saved}["ist3_kosu"] == 3
+
+    # 05:00–06:00 arası 60 örnek (dakikada bir): 1. istasyon %50, 2. istasyon %90, 3. istasyon %25 çalışıyor
+    with db.cursor() as cur:
+        for i in range(60):
+            for tag, on in (("ist1_kosu", i % 2 == 0), ("ist2_kosu", i % 10 != 0), ("ist3_kosu", i % 4 == 0)):
+                cur.execute("INSERT INTO dbo.machine_telemetry (machine_id, tag_name, ts, value) VALUES (%s, %s, DATEADD(second, %s, %s), %s)",
+                            (m["id"], tag, i * 60, utc(5), 1.0 if on else 0.0))
+    db.commit()
+
+    r = client.get(f"/api/reports/stations?machine_id={m['id']}&from=2026-10-12T05:00:00Z&to=2026-10-12T06:00:00Z&max_buckets=12",
+                   headers=users["viewer"])
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["bucket_seconds"] == 300 and body["bottleneck_station"] == 2
+    st = {s["station"]: s for s in body["stations"]}
+    assert [s["station"] for s in body["stations"]] == [1, 2, 3]
+    assert st[1]["run_ratio"] == pytest.approx(0.5) and st[2]["run_ratio"] == pytest.approx(0.9) and st[3]["run_ratio"] == pytest.approx(0.25)
+    assert len(st[1]["buckets"]) == 12 and sum(b["samples"] for b in st[1]["buckets"]) == 60
+
+    # İstasyonu olmayan makine: boş liste; olmayan makine: 404
+    plain = make_line_and_machine(client, admin)
+    assert client.get(f"/api/reports/stations?machine_id={plain['id']}&preset=today", headers=users["viewer"]).json()["stations"] == []
+    assert client.get("/api/reports/stations?machine_id=999999&preset=today", headers=users["viewer"]).status_code == 404

@@ -25,6 +25,9 @@ export interface Tag {
   address: string;
   role: TagRole;
   unit?: string | null;
+  /** Seri istasyonlu makinelerde istasyon numarası (darboğaz analizi); OEE'yi etkilemez */
+  station?: number | null;
+  station_signal?: "running" | null;
 }
 
 export interface PlcConfig {
@@ -193,6 +196,13 @@ export interface TelemetryResponse {
   window: Pick<Window, "from" | "to" | "label">;
   bucket_seconds: number;
   series: Record<string, { ts: string; avg: number; min: number; max: number; n: number }[]>;
+}
+
+export interface StationsResponse {
+  window: Pick<Window, "from" | "to" | "label">;
+  bucket_seconds: number;
+  stations: { station: number; tag: string; run_ratio: number | null; samples: number; buckets: { ts: string; run_ratio: number; samples: number }[] }[];
+  bottleneck_station: number | null;
 }
 
 export interface LiveOee {

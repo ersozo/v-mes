@@ -5,7 +5,7 @@ test.describe("canlı izleme", () => {
   test("giriş formu → canlı panel makineleri ve canlı bağlantıyı gösterir", async ({ page }) => {
     await loginViaForm(page);
     await expect(page.getByRole("heading", { name: "Canlı panel" })).toBeVisible();
-    for (const name of ["CNC Torna 01", "CNC Freze 02", "Eksantrik Pres 01"]) {
+    for (const name of ["CNC Torna 01", "CNC Freze 02", "Eksantrik Pres 01", "Gövde Montaj 01"]) {
       await expect(page.getByText(name, { exact: true })).toBeVisible();
     }
     await expect(page.getByRole("status").filter({ hasText: "Canlı" })).toBeVisible();
@@ -32,6 +32,18 @@ test.describe("canlı izleme", () => {
     await expect(value).not.toHaveText("—");
     const first = await value.textContent();
     await expect(value).not.toHaveText(first ?? "", { timeout: 20_000 }); // pres ~2,6 sn'de bir parça
+  });
+
+  test("seri istasyonlu makinede İstasyonlar kartı ve görünümleri", async ({ page }) => {
+    await login(page);
+    await page.getByRole("link").filter({ hasText: "Gövde Montaj 01" }).click();
+    await expect(page.getByRole("heading", { name: "İstasyonlar" })).toBeVisible();
+    await page.getByRole("radio", { name: "Son 24 saat" }).click();
+    await expect(page.getByText("5. istasyon").first()).toBeVisible({ timeout: 20_000 });
+    await page.getByRole("radio", { name: "Tablo" }).last().click();
+    await expect(page.getByRole("cell", { name: "ist3_kosu" })).toBeVisible();
+    // İstasyon bitleri tek tek telemetri grafiği olarak gösterilmez
+    await expect(page.getByRole("heading", { name: "ist1_kosu" })).toHaveCount(0);
   });
 });
 

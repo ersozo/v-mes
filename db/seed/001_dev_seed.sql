@@ -6,6 +6,7 @@
 --   DB1.DBW10 INT   state_code
 --   DB1.DBD12 REAL  (proses değeri 1)
 --   DB1.DBD16 REAL  (proses değeri 2)
+--   DB1.DBX20.0… BOOL istasyon koşu bitleri (yalnızca montaj-01: 5 seri istasyon)
 
 SET NOCOUNT ON;
 
@@ -17,6 +18,15 @@ WHERE NOT EXISTS (SELECT 1 FROM dbo.areas WHERE slug = 'talasli-imalat');
 INSERT INTO dbo.areas (slug, name, sort_order)
 SELECT 'pres', N'Pres Atölyesi', 2
 WHERE NOT EXISTS (SELECT 1 FROM dbo.areas WHERE slug = 'pres');
+
+INSERT INTO dbo.areas (slug, name, sort_order)
+SELECT 'montaj', N'Montaj', 3
+WHERE NOT EXISTS (SELECT 1 FROM dbo.areas WHERE slug = 'montaj');
+
+INSERT INTO dbo.lines (area_id, slug, name, sort_order)
+SELECT a.id, 'hat-1', N'Montaj Hattı 1', 1 FROM dbo.areas a
+WHERE a.slug = 'montaj'
+  AND NOT EXISTS (SELECT 1 FROM dbo.lines l WHERE l.area_id = a.id AND l.slug = 'hat-1');
 
 INSERT INTO dbo.lines (area_id, slug, name, sort_order)
 SELECT a.id, 'hat-1', N'CNC Hattı 1', 1 FROM dbo.areas a
@@ -36,13 +46,15 @@ WHERE NOT EXISTS (SELECT 1 FROM dbo.edges WHERE code = 'edge-01');
 -- Makineler: üç farklı durum/hurda kaynağı kombinasyonu
 DECLARE @cnc_line int = (SELECT l.id FROM dbo.lines l JOIN dbo.areas a ON a.id = l.area_id WHERE a.slug = 'talasli-imalat' AND l.slug = 'hat-1');
 DECLARE @pres_line int = (SELECT l.id FROM dbo.lines l JOIN dbo.areas a ON a.id = l.area_id WHERE a.slug = 'pres' AND l.slug = 'hat-1');
+DECLARE @montaj_line int = (SELECT l.id FROM dbo.lines l JOIN dbo.areas a ON a.id = l.area_id WHERE a.slug = 'montaj' AND l.slug = 'hat-1');
 
 INSERT INTO dbo.machines (line_id, code, name, state_source, scrap_source, sort_order)
 SELECT v.line_id, v.code, v.name, v.state_source, v.scrap_source, v.sort_order
 FROM (VALUES
     (@cnc_line,  'cnc-01',  N'CNC Torna 01',  'tag',     'plc',    1),
     (@cnc_line,  'cnc-02',  N'CNC Freze 02',  'tag',     'manual', 2),
-    (@pres_line, 'pres-01', N'Eksantrik Pres 01', 'counter', 'plc', 1)
+    (@pres_line, 'pres-01', N'Eksantrik Pres 01', 'counter', 'plc', 1),
+    (@montaj_line, 'montaj-01', N'Gövde Montaj 01', 'tag', 'manual', 1)
 ) v (line_id, code, name, state_source, scrap_source, sort_order)
 WHERE NOT EXISTS (SELECT 1 FROM dbo.machines m WHERE m.code = v.code);
 
@@ -71,6 +83,15 @@ FROM (VALUES
         {"name":"scrap_count","address":"DB1,DINT4","role":"scrap_count","unit":"pcs"},
         {"name":"oil_pressure","address":"DB1,REAL12","role":"process","unit":"bar"},
         {"name":"tonnage","address":"DB1,REAL16","role":"process","unit":"t"}
+    ]'),
+    ('montaj-01', 10204, N'[
+        {"name":"total_count","address":"DB1,DINT0","role":"total_count","unit":"pcs"},
+        {"name":"running","address":"DB1,X8.0","role":"running"},
+        {"name":"ist1_kosu","address":"DB1,X20.0","role":"process","station":1,"station_signal":"running"},
+        {"name":"ist2_kosu","address":"DB1,X20.1","role":"process","station":2,"station_signal":"running"},
+        {"name":"ist3_kosu","address":"DB1,X20.2","role":"process","station":3,"station_signal":"running"},
+        {"name":"ist4_kosu","address":"DB1,X20.3","role":"process","station":4,"station_signal":"running"},
+        {"name":"ist5_kosu","address":"DB1,X20.4","role":"process","station":5,"station_signal":"running"}
     ]')
 ) v (code, port, tags_json)
 JOIN dbo.machines m ON m.code = v.code
@@ -81,7 +102,8 @@ INSERT INTO dbo.products (code, name)
 SELECT v.code, v.name FROM (VALUES
     ('mil-a100',  N'Mil A100'),
     ('flans-b20', N'Flanş B20'),
-    ('braket-c5', N'Braket C5')
+    ('braket-c5', N'Braket C5'),
+    ('govde-d7',  N'Gövde D7')
 ) v (code, name)
 WHERE NOT EXISTS (SELECT 1 FROM dbo.products p WHERE p.code = v.code);
 
@@ -92,7 +114,8 @@ FROM (VALUES
     ('flans-b20', 'cnc-01', 60.0),
     ('mil-a100',  'cnc-02', 50.0),
     ('flans-b20', 'cnc-02', 40.0),
-    ('braket-c5', 'pres-01', 2.5)
+    ('braket-c5', 'pres-01', 2.5),
+    ('govde-d7',  'montaj-01', 20.0)
 ) v (product_code, machine_code, cycle)
 JOIN dbo.products p ON p.code = v.product_code
 JOIN dbo.machines m ON m.code = v.machine_code

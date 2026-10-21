@@ -43,6 +43,11 @@ def test_mekanik_layout():
     TagDefinition(name=sayac["name"], address=sayac["address"], role="total_count")
     TagDefinition(name=kosu["name"], address=kosu["address"], role="running")
     assert len([x for x in r["rows"] if x["supported"]]) == 8
+    # Dizi elemanındaki koşu biti istasyon numarasıyla önerilir; diğer alanlar istasyon sinyali değildir
+    assert kosu["suggested_station"] == 2 and by_path["MakinaIstasyonData[1].kosuBiti"]["suggested_station"] == 1
+    assert by_path["MakinaIstasyonData[2].girisSensoru"]["suggested_station"] is None
+    assert sayac["suggested_station"] is None
+    TagDefinition(name=kosu["name"], address=kosu["address"], role="process", station=2, station_signal="running")
 
 
 def test_xlsx_roundtrip_and_db_override():
@@ -64,6 +69,7 @@ def test_pasted_tia_db_editor_rows():
     assert by["ToplamAdet"]["address"] == "DB10,DINT0" and by["ToplamAdet"]["suggested_role"] == "total_count_candidate"
     assert by["HurdaAdet"]["suggested_role"] == "scrap_count_candidate"
     assert by["Calisiyor"]["address"] == "DB10,X8.0" and by["Calisiyor"]["suggested_role"] == "running_candidate"
+    assert by["Calisiyor"]["suggested_station"] is None     # dizi elemanı değil
     assert by["Sicaklik"]["address"] == "DB10,REAL10"
     assert not by["Baslangic"]["supported"]
 

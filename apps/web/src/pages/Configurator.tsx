@@ -339,6 +339,7 @@ function MachineForm({ id, lineId, data, onSaved, onDeleted }: { id: number | nu
               <th>Adres</th>
               <th>Rol</th>
               <th>Birim</th>
+              <th title="Seri istasyonlu makinelerde istasyonun koşu biti (darboğaz analizi; OEE'yi etkilemez)">İstasyon</th>
               <th />
             </tr>
           </thead>
@@ -359,6 +360,20 @@ function MachineForm({ id, lineId, data, onSaved, onDeleted }: { id: number | nu
                     <p className="mt-1 text-[11px] text-muted">{ROLE_HINT[t.role]}</p>
                   </td>
                   <td><Input value={t.unit ?? ""} onChange={(e) => setTag(i, { unit: e.target.value || null })} aria-label="Birim" className="h-8 w-20" /></td>
+                  <td>
+                    <Input
+                      value={t.station ?? ""}
+                      inputMode="numeric"
+                      placeholder="—"
+                      onChange={(e) => {
+                        const n = e.target.value.replace(/\D/g, "").slice(0, 2);
+                        setTag(i, n ? { station: Number(n), station_signal: "running" } : { station: null, station_signal: null });
+                      }}
+                      aria-label="İstasyon numarası (koşu biti)"
+                      className="h-8 w-16"
+                    />
+                    {t.station != null && <p className="mt-1 text-[11px] text-muted">koşu biti</p>}
+                  </td>
                   <td>
                     <button className="rounded p-1.5 text-muted hover:bg-surface-2 hover:text-danger" onClick={() => setPlc({ ...plc, tags: plc.tags.filter((_, j) => j !== i) })} aria-label="Tag'i sil">
                       <Trash2 className="size-4" />

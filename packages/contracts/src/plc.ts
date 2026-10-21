@@ -108,12 +108,26 @@ const ROLE_TYPES: Record<TagRole, ReadonlySet<S7DataType>> = {
   process: new Set(["X", "BYTE", "INT", "WORD", "DINT", "DWORD", "REAL"]),
 };
 
+/**
+ * İstasyon sinyalleri: seri istasyonlu makinelerde istasyon bazlı (darboğaz) analiz için.
+ * Rolden bağımsızdır (ör. son istasyonun koşu biti aynı zamanda makinenin "running" tag'i olabilir);
+ * istasyon bilgisi OEE hesabını etkilemez.
+ */
+export const STATION_SIGNALS = ["running"] as const;
+export type StationSignal = (typeof STATION_SIGNALS)[number];
+const STATION_SIGNAL_TYPES: Record<StationSignal, ReadonlySet<S7DataType>> = {
+  running: new Set(["X"]),
+};
+export const MAX_STATION = 99;
+
 export const tagDefinitionSchema = z
   .object({
     name: z.string().regex(TAG_NAME_PATTERN, "tag adı küçük harfle başlamalı; yalnızca a-z, 0-9 ve _ (en fazla 64)"),
     address: z.string().min(1),
     role: z.enum(TAG_ROLES),
     unit: z.string().max(16).optional(),
+    station: z.number().int().min(1).max(MAX_STATION, `istasyon numarası 1–${MAX_STATION} arasında olmalı`).optional(),
+    station_signal: z.enum(STATION_SIGNALS).optional(),
   })
   .superRefine((tag, ctx) => {
     const parsed = parseS7Address(tag.address);
@@ -129,6 +143,18 @@ export const tagDefinitionSchema = z
         message: `"${tag.role}" rolü için ${parsed.value.type} tipi uygun değil. Uygun tipler: ${[...allowed].join(", ")}`,
       });
     }
+    if ((tag.station === undefined) !== (tag.station_signal === undefined)) {
+      ctx.addIssue({ code: "custom", path: ["station"], message: "istasyon numarası ve istasyon sinyali birlikte verilmeli" });
+    } else if (tag.station !== undefined && tag.station_signal !== undefined) {
+      const types = STATION_SIGNAL_TYPES[tag.station_signal];
+      if (!types.has(parsed.value.type)) {
+        ctx.addIssue({
+          code: "custom",
+          path: ["station_signal"],
+          message: `"${tag.station_signal}" istasyon sinyali için ${parsed.value.type} tipi uygun değil. Uygun tipler: ${[...types].join(", ")}`,
+        });
+      }
+    }
   });
 export type TagDefinition = z.infer<typeof tagDefinitionSchema>;
 
@@ -139,7 +165,19 @@ export const tagListSchema = z
   .superRefine((tags, ctx) => {
     const names = new Map<string, number>();
     const roles = new Map<TagRole, number>();
+    const stationSignals = new Set<string>();
     tags.forEach((tag, i) => {
+      if (tag.station !== undefined && tag.station_signal !== undefined) {
+        const key = `${tag.station}/${tag.station_signal}`;
+        if (stationSignals.has(key)) {
+          ctx.addIssue({
+            code: "custom",
+            path: [i, "station"],
+            message: `${tag.station}. istasyonun "${tag.station_signal}" sinyali birden fazla kez tanımlanmış`,
+          });
+        }
+        stationSignals.add(key);
+      }
       if (names.has(tag.name)) {
         ctx.addIssue({ code: "custom", path: [i, "name"], message: `"${tag.name}" adı birden fazla kez kullanılmış` });
       }

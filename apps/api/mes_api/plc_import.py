@@ -58,6 +58,7 @@ class ImportRow:
     supported: bool
     note: str | None = None
     suggested_role: str = "process"
+    suggested_station: int | None = None   # dizi elemanındaki koşu biti → istasyon numarası
 
 
 def _translit(text: str) -> str:
@@ -87,6 +88,14 @@ def _suggest_role(name: str, s7_type: str | None) -> str:
     if s7_type == "X" and re.search(r"kosu|calis|run|auto|otomatik", n):
         return "running_candidate"
     return "process"
+
+
+def _suggest_station(path: str, role: str) -> int | None:
+    """'MakinaIstasyonData[3].kosuBiti' → 3 (yalnızca koşu/çalışıyor biti adaylarında)."""
+    if role != "running_candidate":
+        return None
+    m = re.search(r"\[(\d+)\]\.[^.\[\]]+$", path)
+    return int(m.group(1)) if m and 1 <= int(m.group(1)) <= 99 else None
 
 
 def _classify(cells: list[str]) -> tuple[str | None, str | None, str | None]:
@@ -156,9 +165,10 @@ def parse_rows(rows: list[list[object]], db_number: int | None = None) -> dict:
 
         db = db_number or detected_db
         address = None if db is None else (f"DB{db},X{byte}.{bit}" if s7 == "X" else f"DB{db},{s7}{byte}")
+        role = _suggest_role(path, s7)
         out.append(ImportRow(i, path, suggest_name(path), tia_type, offset, address, address is not None,
                              note or (None if db else "DB numarası bulunamadı — içe aktarma ekranında girin"),
-                             _suggest_role(path, s7)))
+                             role, _suggest_station(path, role)))
 
     if len(rows) > MAX_ROWS:
         warnings.append(f"İlk {MAX_ROWS} satır işlendi")

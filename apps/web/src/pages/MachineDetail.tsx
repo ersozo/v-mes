@@ -6,15 +6,16 @@ import { AssignDowntimeDialog } from "../components/AssignDowntime";
 import { ChartCard } from "../components/ChartCard";
 import { OeeTiles } from "../components/figures";
 import { CategoryTag, StateBadge } from "../components/state";
-import { Button, Card, ErrorBox, PageHeader, Spinner, Table } from "../components/ui";
+import { Button, Card, ErrorBox, PageHeader, Segmented, Spinner, Table } from "../components/ui";
 import { Gantt, ganttLegend } from "../charts/Gantt";
+import { STATIONS_TYPES, StationsChart, type StationsType } from "../charts/Stations";
 import { TELEMETRY_TYPES, TelemetryChart, type TelemetryPoint, type TelemetryType } from "../charts/Telemetry";
 import { api } from "../lib/api";
 import { can, useAuth } from "../lib/auth";
 import { dateTime, duration, num, since, time } from "../lib/format";
 import { useNow } from "../lib/hooks";
 import { ratePerMinute, useLive } from "../lib/live";
-import type { Downtime, LiveOee, MachineDetail, TelemetryResponse, TimelineResponse } from "../lib/types";
+import type { Downtime, LiveOee, MachineDetail, StationsResponse, TelemetryResponse, TimelineResponse } from "../lib/types";
 
 export function MachineDetailPage() {
   const id = Number(useParams().id);
@@ -38,7 +39,9 @@ export function MachineDetailPage() {
   if (machine.isLoading) return <Spinner />;
   if (machine.error) return <ErrorBox error={machine.error} />;
   const m = machine.data!;
-  const processTags = (m.plc?.tags ?? []).filter((t) => t.role === "process");
+  // İstasyon sinyalleri tek tek grafik yerine "İstasyonlar" kartında birlikte gösterilir
+  const processTags = (m.plc?.tags ?? []).filter((t) => t.role === "process" && t.station == null);
+  const hasStations = (m.plc?.tags ?? []).some((t) => t.station != null);
   const rate = ratePerMinute(live);
 
   return (
@@ -102,6 +105,8 @@ export function MachineDetailPage() {
         </ChartCard>
       </div>
 
+      {hasStations && <StationsCard machineId={id} pollMs={m.plc?.poll_ms ?? 1000} />}
+
       <Card className="mt-4 p-4">
         <h3 className="mb-2 font-semibold">Son duruşlar</h3>
         <Table>
@@ -135,6 +140,44 @@ export function MachineDetailPage() {
       </Card>
 
       <AssignDowntimeDialog downtime={assign} onClose={() => setAssign(null)} />
+    </div>
+  );
+}
+
+const STATION_PRESETS = [
+  { value: "current_shift", label: "Vardiya" },
+  { value: "today", label: "Bugün" },
+  { value: "last_24h", label: "Son 24 saat" },
+  { value: "last_7_days", label: "Son 7 gün" },
+] as const;
+type StationPreset = (typeof STATION_PRESETS)[number]["value"];
+
+/** Seri istasyonlu makinede istasyon başına çalışma oranı (darboğaz analizi). */
+function StationsCard({ machineId, pollMs }: { machineId: number; pollMs: number }) {
+  const [preset, setPreset] = useState<StationPreset>("today");
+  const stations = useQuery({
+    queryKey: ["stations", machineId, preset],
+    queryFn: () => api<StationsResponse>(`/api/reports/stations?machine_id=${machineId}&preset=${preset}`),
+    refetchInterval: 60_000,
+  });
+  const w = stations.data?.window;
+  return (
+    <div className="mt-4">
+      <div className="mb-2 flex justify-end">
+        <Segmented size="sm" label="İstasyon analizi dönemi" value={preset} onChange={setPreset} options={[...STATION_PRESETS]} />
+      </div>
+      <ChartCard<StationsType>
+        id="m-stations"
+        title="İstasyonlar"
+        subtitle={w ? `Darboğaz analizi · ${w.label} (${dateTime(w.from)}–${time(w.to)})` : "Darboğaz analizi"}
+        types={STATIONS_TYPES}
+        defaultType="bar"
+        loading={stations.isLoading}
+        error={stations.error}
+        empty={!stations.data?.stations.some((s) => s.samples > 0)}
+      >
+        {(t) => stations.data && <StationsChart data={stations.data} type={t} pollMs={pollMs} />}
+      </ChartCard>
     </div>
   );
 }

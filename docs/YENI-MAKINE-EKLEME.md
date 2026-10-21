@@ -71,7 +71,7 @@ Makine için hangi PLC sinyallerinin ne anlama geldiğini üretimle birlikte net
 | İzlenmek istenen **proses değerleri** (sıcaklık, basınç, sensörler…) | `process` rolü |
 | Bir parçanın **ideal çevrim süresi** (ürün/model başına) | **Tanımlar → Ürünler** (10. adım) |
 
-> **Seri istasyonlu makineler** (parça istasyonlardan sırayla geçiyor): makine **tek makine** olarak tanımlanır; üretim adedi **son istasyonun** sayacından alınır. İstasyonları ayrı makine yapmak aynı parçayı her istasyonda yeniden sayar ve hat/fabrika toplamlarını şişirir. Diğer istasyonların sinyalleri darboğaz analizi için proses değeri olarak izlenebilir.
+> **Seri istasyonlu makineler** (parça istasyonlardan sırayla geçiyor): makine **tek makine** olarak tanımlanır; üretim adedi **son istasyonun** sayacından alınır. İstasyonları ayrı makine yapmak aynı parçayı her istasyonda yeniden sayar ve hat/fabrika toplamlarını şişirir. İstasyonların **koşu bitlerine istasyon numarası** verilirse makine detayında **İstasyonlar** (darboğaz) analizi açılır (7. adım).
 
 ## 5. HUBBOX'ı ekleme ve kontrol
 
@@ -110,8 +110,21 @@ Ardından **Kontrol**: tüm maddeler ✓ olmalı (erişim, kimlik doğrulama, No
 3. Okunmayan satırlar nedeniyle gösterilir (String, LReal, 64 bit, Time/DTL…). Tipi boş bırakılmış bit satırları Bool varsayılır ve **"doğrulayın"** notuyla işaretlenir.
 4. Almak istediğiniz satırları seçin; gerekirse **tag adını** kısaltın (ör. `ist7_sayac`), **rol** ve **birim** atayın. *Sayaç adayı*, *çalışıyor adayı* etiketleri yalnızca öneridir.
    - Toplam sayaç, hurda sayacı, çalışıyor bit'i ve durum kodu rolleri **yalnızca bir** tag'e atanabilir.
+   - **İstasyon** sütunu: dizi elemanındaki koşu bitleri (`MakinaIstasyonData[n].kosuBiti`) otomatik olarak *n* numarasıyla gelir. Bkz. aşağıdaki *İstasyon (darboğaz) analizi*.
 5. **Aktar** → tag tablosuna eklenir; doğrulama anında çalışır (adres sözdizimi, rol–tip uyumu, zorunlu roller, aynı belleği okuyan tag uyarıları).
 6. **Kaydet**.
+
+### İstasyon (darboğaz) analizi
+
+Seri istasyonlu makinelerde her istasyonun **koşu bitine** (Bool) tag tablosunda **İstasyon** numarası verilir. İstasyon bilgisi rolden bağımsızdır: son istasyonun koşu biti hem makinenin *Çalışıyor bit'i* olup hem de istasyon numarası taşıyabilir. Diğer istasyonların bitleri *Proses değeri* rolünde kalır. İstasyon bilgisi OEE'yi etkilemez.
+
+**Makine detayı → İstasyonlar** kartı seçilen dönem (vardiya, bugün, son 24 saat, son 7 gün) için gösterir:
+
+- **Çalışma oranı:** her istasyonun koşu bitinin 1 olduğu sürenin oranı. Seri hatta en yavaş istasyon en uzun çalışır, diğerleri onu bekler; **en yüksek oranlı istasyon darboğaz adayıdır**.
+- **Zaman şeridi:** istasyon başına zaman kovalarında çalışma oranı (koyu = çok çalışıyor). Darboğazın vardiya içinde yer değiştirip değiştirmediği buradan görülür.
+- **Tablo:** oran, yaklaşık çalışma süresi ve örnek sayısı.
+
+> Koşu biti istasyonun *ne kadar* çalıştığını gösterir, *neden beklediğini* göstermez. Giriş/çıkış sensörleri de okunursa "parça bekliyor" (aç) ve "bloke" ayrımı yapılabilir; bu ileride değerlendirilecek (bkz. Mekanik örneği).
 
 **Aynı tip makine** (aynı PLC programı): **Başka makineden kopyala** ile tag listesi ve bağlantı ayarları kopyalanır; yalnızca edge ve PLC adresi değiştirilir.
 
@@ -156,11 +169,12 @@ Ardından **Kontrol**: tüm maddeler ✓ olmalı (erişim, kimlik doğrulama, No
 | DB | `DB200`, optimize edilmemiş | ✓ |
 | Yapı | 7 istasyon, parça istasyonlardan **sırayla** geçer → **tek makine** | ✓ |
 | Üretim adedi | 7. istasyonun `sonsuzSayici` (UInt) → `DB200,WORD956` (örüntüye göre; tam DB tablosuyla doğrulanacak) | adres doğrulanacak |
-| Çalışma durumu | Aday: 7. istasyonun `kosuBiti` (`DB200,X952.2`), herhangi bir istasyonun koşu biti veya sayaç hareketi | **karar bekliyor** |
+| Çalışma durumu | 7. istasyonun `kosuBiti` (Bool) → `DB200,X952.2`, rol `running`, durum kaynağı `tag`. Her istasyonun kendi koşu biti var; hat çıkışı ölçü noktası seçildi (süre ve adet aynı istasyondan) | ✓ (adres doğrulanacak) |
 | Hurda | Ayrı sayaç yok → **operatör girişi** | ✓ |
 | İdeal çevrim süresi | Ortalama **19 sn** (modele göre değişebilir) | ✓ |
 | `MODEL_ADI` (String, ofset 16.0) | Aktif modeli gösterir. İleride ürünün otomatik belirlenmesi için kullanılabilir (String okuma + model ↔ ürün eşleştirmesi gerekir) | sonraki adım |
-| Diğer istasyon sinyalleri | Giriş/çıkış sensörleri, koşu bitleri, sayaçlar — darboğaz analizi için proses değeri olarak izlenebilir | isteğe bağlı |
+| İstasyon koşu bitleri | 1–7. istasyonların `kosuBiti`'leri istasyon numarasıyla okunacak → **İstasyonlar** (darboğaz) analizi. 7. istasyonun biti aynı zamanda makinenin `running` tag'i. OEE'yi etkilemez | ✓ (karar 2026-10-21) |
+| İstasyon giriş/çıkış sensörleri | **Sonra yeniden değerlendirilecek.** Okunursa istasyonun "parça bekliyor" (girişte parça yok) mu, yoksa "bloke" (çıkıştaki parça ilerleyemiyor) mu olduğu ayrılabilir; bu klasik darboğaz tespitidir. Bedeli: 7 yerine 21 sinyal, yani 1 sn okumada günde ~1,8 milyon telemetri satırı, 180 günlük saklamada ~330 milyon. Değerlendirirken okuma aralığını (ör. 2 sn) ve saklama süresini de gözden geçir. | ertelendi |
 
 DB200 adres örüntüsü (her istasyon 10 bayt, 1. istasyon 892.0'dan başlar): `n`. istasyon için başlangıç = `892 + (n−1) × 10`; giriş sensörü `.0`, çıkış sensörü `.1`, koşu biti `.2`, sayaç `+4` (UInt).
 

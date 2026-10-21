@@ -19,7 +19,9 @@
       { "name": "total_count", "address": "DB1,WORD0", "role": "total_count", "unit": "pcs" },
       { "name": "running", "address": "DB1,X8.0", "role": "running" },
       { "name": "state_code", "address": "DB1,INT10", "role": "state_code" },
-      { "name": "temp", "address": "DB1,REAL8", "role": "process", "unit": "°C" }
+      { "name": "temp", "address": "DB1,REAL8", "role": "process", "unit": "°C" },
+      { "name": "ist3_kosu", "address": "DB200,X912.2", "role": "process", "station": 3, "station_signal": "running" },
+      { "name": "running", "address": "DB200,X952.2", "role": "running", "station": 7, "station_signal": "running" }
     ],
     "invalid": [
       { "name": "total_count", "address": "DB1,INT0", "role": "total_count" },
@@ -27,7 +29,13 @@
       { "name": "Total", "address": "DB1,DINT0", "role": "total_count" },
       { "name": "1abc", "address": "DB1,DINT0", "role": "process" },
       { "name": "x", "address": "DB1,DINT0", "role": "unknown" },
-      { "name": "x", "address": "DB1,REAL0", "role": "process", "unit": "çok-uzun-bir-birim-adi" }
+      { "name": "x", "address": "DB1,REAL0", "role": "process", "unit": "çok-uzun-bir-birim-adi" },
+      { "name": "x", "address": "DB1,X0.0", "role": "process", "station": 1 },
+      { "name": "x", "address": "DB1,X0.0", "role": "process", "station_signal": "running" },
+      { "name": "x", "address": "DB1,INT0", "role": "process", "station": 1, "station_signal": "running" },
+      { "name": "x", "address": "DB1,X0.0", "role": "process", "station": 0, "station_signal": "running" },
+      { "name": "x", "address": "DB1,X0.0", "role": "process", "station": 100, "station_signal": "running" },
+      { "name": "x", "address": "DB1,X0.0", "role": "process", "station": 1, "station_signal": "blocked" }
     ]
   },
   "tagLists": {
@@ -35,6 +43,10 @@
       [
         { "name": "a", "address": "DB1,REAL0", "role": "process" },
         { "name": "b", "address": "DB1,REAL4", "role": "process" }
+      ],
+      [
+        { "name": "a", "address": "DB1,X0.0", "role": "process", "station": 1, "station_signal": "running" },
+        { "name": "b", "address": "DB1,X0.1", "role": "process", "station": 2, "station_signal": "running" }
       ]
     ],
     "invalid": [
@@ -46,6 +58,10 @@
       [
         { "name": "a", "address": "DB1,DINT0", "role": "total_count" },
         { "name": "b", "address": "DB1,DINT4", "role": "total_count" }
+      ],
+      [
+        { "name": "a", "address": "DB1,X0.0", "role": "process", "station": 1, "station_signal": "running" },
+        { "name": "b", "address": "DB1,X0.1", "role": "process", "station": 1, "station_signal": "running" }
       ]
     ]
   }
